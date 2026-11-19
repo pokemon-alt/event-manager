@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="parcel-workspace" content="standalone"><meta name="color-scheme" content="dark"><title>Event Manager</title>
+<link rel="stylesheet" href="/static/event-coordinator/workspace.css"><link rel="stylesheet" id="ec-source-colors" href="/static/event-coordinator/colors.css">
+<script defer src="/static/event-coordinator/workspace.js"></script></head><body><div id="event-coordinator" aria-label="Event Manager">
+
+
+
+
+  <div class="ec-brand"><span class="ec-sigil" aria-hidden="true">✳</span><div><h1>Event Manager</h1></div><nav class="ec-worknav" id="ec-source-tabs" aria-label="Workspace"><button type="button" id="ec-show-coordinator" aria-pressed="true" aria-controls="ec-coordinator-view" class="cursor-interaction">Coordinator</button><button type="button" class="cursor-interaction" data-sources-tab="people" aria-controls="ec-settings-people" aria-pressed="false">People &amp; addresses</button><button type="button" class="cursor-interaction" data-sources-tab="accounts" aria-controls="ec-settings-accounts" aria-pressed="false">Retail accounts</button><button type="button" class="cursor-interaction" data-sources-tab="cards" aria-controls="ec-settings-cards" aria-pressed="false">Cards</button><button type="button" id="ec-show-settings" class="cursor-interaction" aria-controls="ec-app-settings" aria-pressed="false" hidden>Settings</button><button type="button" id="ec-privacy-mode" data-ec-privacy-toggle aria-label="Privacy Mode" aria-pressed="false">Privacy Mode <span aria-hidden="true">Off</span></button></nav><span class="ec-sample">Private workspace</span></div>
+  <div id="ec-coordinator-view">
+  <div class="ec-events ec-hierarchy-strip"><span class="ec-strip-label">Events</span><div id="ec-event-buttons" class="ec-event-buttons" role="tablist" aria-label="Events"></div><button type="button" id="ec-new-add" class="ec-strip-add" aria-label="Add event" title="Add event">+</button></div>
+  <div class="ec-main">
+    <div id="ec-list-strip" class="ec-bots ec-hierarchy-strip"><span class="ec-strip-label">Lists</span><div id="ec-list-buttons" role="tablist" aria-label="Profile lists"></div><button type="button" id="ec-new-list" class="ec-strip-add" aria-label="Add list" title="Add list">+</button><button type="button" id="ec-toggle-setup" aria-controls="ec-list-setup" aria-expanded="true">Hide setup</button></div>
+    <div class="ec-deletion-note" id="ec-deletion-note" hidden><span role="status" id="ec-deletion-text"></span><button type="button" id="ec-undo-delete">Undo</button></div>
+    <p id="ec-hierarchy-empty" class="ec-source-note" hidden></p>
+    <div id="ec-list-panel" role="tabpanel" hidden>
+      <div id="ec-list-setup">
+      <div class="ec-boxes">
+        <section class="ec-box" aria-label="People and addresses configuration"><h3>People / Addresses</h3><details><summary class="cursor-interaction">Select people and addresses</summary><div class="ec-options" id="ec-address-options"></div></details><div id="ec-address-chips" class="ec-chips" aria-live="polite"></div></section>
+        <section class="ec-box" aria-label="Retail accounts configuration"><h3>Retail accounts</h3><details><summary id="ec-pool-title" class="cursor-interaction">Target · saved accounts</summary><div class="ec-options"><label class="ec-field">Retailer for this list<select id="ec-list-retailer" class="cursor-interaction"><option>Target</option><option>Walmart</option><option>Riot</option></select></label><label class="ec-option"><input id="ec-pool" type="checkbox" class="cursor-interaction"><span id="ec-pool-caption">Use saved accounts</span></label><div id="ec-account-group-options"></div></div></details><div id="ec-account-chips" class="ec-chips" aria-live="polite"></div><div id="ec-account-count" class="ec-pool-count" aria-live="polite">980 unused in this event</div><button type="button" id="ec-select-unused" class="cursor-interaction">Select all unused accounts</button><label class="ec-check"><input id="ec-sharing" type="checkbox" class="cursor-interaction">Allow account sharing between lists</label></section>
+        <section class="ec-box" aria-label="Cards configuration"><h3>Card groups</h3><div id="ec-card-options" role="group" aria-label="Card groups"></div><div id="ec-card-chips" class="ec-chips"></div><p id="ec-no-card-groups" class="ec-source-note" hidden>No cards available.</p></section>
+      </div>
+      <div class="ec-controls"><label class="ec-field ec-number" for="ec-quantity">Profiles<input id="ec-quantity" type="number" min="0" step="1" value="10"></label><label class="ec-field ec-mode" for="ec-mode">Distribution<select id="ec-mode" class="cursor-interaction"><option value="even">Evenly</option><option value="random">Randomly</option></select></label><label class="ec-field ec-basis" for="ec-basis">Balance by<select id="ec-basis" class="cursor-interaction"><option value="person">Person</option><option value="address">Address</option></select></label><span id="ec-live-status" class="ec-generation-note" aria-live="polite">Live sheet</span></div>
+      </div>
+    <div id="ec-conflict" class="ec-conflict" role="alert" hidden></div>
+    <div class="ec-sheet-toolbar"><h2 class="ec-sheet-title">Profile sheet</h2><div class="ec-sheet-tools">
+      <div class="ec-column-jumps" id="ec-column-jumps" role="group" aria-label="Spreadsheet columns"><button type="button" id="ec-open-columns" aria-haspopup="dialog">Columns…</button><button type="button" class="cursor-interaction" data-jump="nickname">Profile</button><button type="button" class="cursor-interaction" data-jump="firstName">Shipping</button><button type="button" class="cursor-interaction" data-jump="billingFirstName">Billing</button></div>
+      <button type="button" id="ec-open-export" class="cursor-interaction">Export profiles…</button>
+    </div></div>
+    <span id="ec-export-result" class="ec-source-note" role="status"></span>
+    <p id="ec-no-columns" hidden class="ec-source-note">All sheet columns are hidden. Open Columns to show them again.</p>
+    <dialog id="ec-columns-dialog" aria-labelledby="ec-columns-heading">
+      <h2 id="ec-columns-heading">Columns for this list</h2>
+      <p class="ec-source-note">Unchecked fields are hidden. Exports leave their text blank and turn their flags off. You can turn fields back on to restore their values. Country and payment details appear only in exports.</p>
+      <div id="ec-field-groups"></div><p class="ec-omissions" id="ec-column-impact" role="status"></p>
+      <footer><button type="button" id="ec-columns-cancel">Cancel</button><button type="button" id="ec-columns-apply" class="ec-primary">Apply</button></footer>
+    </dialog>
+    <dialog id="ec-export-dialog" aria-labelledby="ec-export-heading"><div class="ec-export-heading"><h2 id="ec-export-heading">Export profiles</h2><button type="button" data-ec-privacy-toggle aria-label="Privacy Mode" aria-pressed="false">Privacy Mode <span aria-hidden="true">Off</span></button></div>
+      <p class="ec-omissions" id="ec-export-omissions"></p>
+      <p id="ec-export-context" class="ec-source-note"></p><label>Export name<input id="ec-export-name" maxlength="200" autocomplete="off"></label>
+      <label>Profile format<select id="ec-export-format"><option value="sniped">Sniped</option><option value="shikari">Shikari</option><option value="aycd">AYCD</option></select></label>
+      <label>File type<select id="ec-export-filetype"><option value="json" hidden disabled>AYCD native JSON</option><option value="csv" selected>CSV</option><option value="xlsx">Excel / Numbers (.xlsx) · preserve digits</option></select></label><p id="ec-format-note" class="ec-source-note" hidden></p>
+      <div id="ec-export-target"></div><p id="ec-export-help" class="ec-source-note"></p><div id="ec-export-issue" role="status"></div><div id="ec-export-codes"></div>
+      <div class="ec-source-actions"><button type="button" id="ec-download-export" class="ec-primary cursor-interaction">Export CSV</button><button type="button" id="ec-close-export" class="cursor-interaction">Cancel</button></div>
+    </dialog>
+    <div class="ec-edit-tools" id="ec-edit-tools"><button type="button" id="ec-select-cells" aria-pressed="false" title="Tap cells or drag to select a range">Select cells</button><button type="button" id="ec-sheet-undo" disabled title="Undo the last sheet edit in this list">Undo</button><button type="button" id="ec-sheet-redo" disabled title="Redo the last undone sheet edit">Redo</button><button type="button" id="ec-ai-edit" aria-haspopup="dialog" hidden>Edit with AI</button><button type="button" id="ec-sheet-defaults" disabled aria-haspopup="dialog">Restore to default…</button><span id="ec-selection-info" role="status"></span><button type="button" id="ec-edit-cells" hidden>Edit selected cells</button><input id="ec-cell-value" type="text" aria-label="Value for selected cells" autocomplete="off" hidden><button type="button" id="ec-apply-cells" hidden>Apply</button><button type="button" id="ec-cancel-cells" hidden>Cancel</button><button type="button" id="ec-match-billing" hidden>Match billing to shipping</button></div>
+    <dialog id="ec-ai-dialog" aria-labelledby="ec-ai-title" class="ec-private-transient">
+      <h2 id="ec-ai-title">Edit with AI</h2>
+      <label>Apply to<select id="ec-ai-scope"></select></label>
+      <label>Describe the edit<textarea id="ec-ai-instruction" maxlength="2000" rows="3" placeholder="For example, trim the shipping city and capitalize the shipping state."></textarea></label>
+      <p class="ec-source-note">OpenAI receives your instruction and the available column names. Cell values stay in Event Manager.</p>
+      <p id="ec-ai-status" role="status" aria-live="polite"></p>
+      <div id="ec-ai-results" hidden><table id="ec-ai-changes" aria-label="Preview of profile edits"><thead><tr><th>Profile</th><th>Column</th><th>Before</th><th>After</th></tr></thead></table></div>
+      <footer class="ec-source-actions"><button type="button" id="ec-ai-close">Close</button><button type="button" id="ec-ai-settings" hidden>Open Settings</button><button type="button" id="ec-ai-preview">Preview changes</button><button type="button" id="ec-ai-apply" class="ec-primary" disabled>Apply changes</button></footer>
+    </dialog>
+    <dialog id="ec-defaults-dialog" aria-labelledby="ec-defaults-title">
+      <h2 id="ec-defaults-title">Restore to default</h2>
+      <p class="ec-source-note">Use the current values from the linked address, retail account, and card.</p>
+      <label>Restore<select id="ec-defaults-scope"></select></label>
+      <div class="ec-source-actions"><button type="button" id="ec-defaults-cancel">Cancel</button><button type="button" id="ec-defaults-apply" class="ec-primary">Restore</button></div>
+    </dialog>
+    <div id="ec-sheet-scroll" class="ec-sheet"><table id="ec-profile-table" aria-label="Live profile sheet"><colgroup id="ec-column-widths"></colgroup><thead><tr id="ec-column-heads"></tr></thead><tbody id="ec-rows" aria-label="Live profiles"></tbody></table><div id="ec-empty" class="ec-empty" hidden></div></div>
+    <div class="ec-footer"><span id="ec-rendered-count">0 profiles</span><span>Cell edits are saved in this list</span></div>
+    <div id="ec-status" class="ec-status" aria-live="polite"></div>
+    </div>
+  </div>
+  </div>
+  <dialog id="ec-map-dialog" aria-labelledby="ec-map-title">
+    <div class="ec-map-head"><div><small>SETTINGS / IMPORT</small><h2 id="ec-map-title">Import records</h2></div><button type="button" data-ec-privacy-toggle aria-label="Privacy Mode" aria-pressed="false">Privacy Mode <span aria-hidden="true">Off</span></button><button type="button" id="ec-map-close" aria-label="Close import">×</button></div>
+    <div class="ec-map-body">
+      <div class="ec-map-controls"><label>Choose or drop a file<input id="ec-map-file" type="file" accept=".csv,.tsv,.txt,text/plain,text/csv,text/tab-separated-values"></label><label>Separator<select id="ec-map-delimiter"><option value="auto">Detect automatically</option><option value=",">Comma (,)</option><option value=":">Colon (:)</option><option value=";">Semicolon (;)</option><option value="tab">Tab</option><option value="|">Pipe (|)</option><option value="custom">Custom…</option></select></label><label id="ec-map-custom-box" hidden>Custom separator<input id="ec-map-custom" type="text" maxlength="1" aria-label="Custom separator"></label></div>
+      <label class="ec-map-input">Source data<textarea id="ec-map-text" rows="3" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Paste rows or choose a file above"></textarea></label>
+      <div class="ec-map-switches"><label><input type="checkbox" id="ec-map-header" checked>First row contains column names</label><button id="ec-map-reveal" type="button" hidden>Show original column names</button><button id="ec-map-preset" type="button" hidden></button><span id="ec-map-source"></span></div>
+      <section id="ec-map-table-section" hidden><h3>Map columns</h3><p>Choose what each column contains, or leave it set to Skip. The rows below preview your mapping.</p><div class="ec-map-scroll"><table><thead id="ec-map-headings"></thead><tbody id="ec-map-sample"></tbody></table></div></section>
+      <div id="ec-map-status" role="status"></div><ul id="ec-map-issues"></ul>
+    </div><div class="ec-map-footer"><button id="ec-map-cancel" type="button">Cancel</button><button id="ec-map-apply" class="ec-primary" type="button" disabled>Import</button></div>
+  </dialog>
+  <section id="ec-app-settings" aria-labelledby="ec-settings-heading" class="ec-private-transient" hidden>
+    <h2 id="ec-settings-heading">Settings</h2>
+    <form id="ec-ai-key-form" class="ec-source-pane" autocomplete="off">
+      <div class="ec-key-header"><h3>OpenAI API key</h3><span id="ec-ai-key-badge" hidden>Key saved</span></div>
+      <p>Use your OpenAI account to edit profile sheets. The key is encrypted on the server and shared across your devices in this workspace.</p>
+      <label for="ec-ai-key" id="ec-ai-key-label">API key</label>
+      <input type="password" id="ec-ai-key" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="1024" placeholder="sk-…" required>
+      <div class="ec-source-actions"><button type="submit" id="ec-ai-key-save" class="ec-primary" disabled>Save key</button><button type="button" id="ec-ai-key-remove" hidden>Remove key</button><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Get an API key</a></div>
+      <div role="status" id="ec-ai-key-status"></div>
+    </form>
+  </section>
+  <section id="ec-sources" aria-label="Source directory" hidden>
+    <div id="ec-settings-people">
+    <div class="ec-source-header"><div><h2>People &amp; addresses</h2></div><div class="ec-source-actions"><button id="ec-new-person" class="cursor-interaction" type="button">+ Person</button><button id="ec-new-address" class="cursor-interaction" type="button">+ Address</button><button id="ec-import-toggle" class="cursor-interaction" aria-haspopup="dialog" type="button">Import CSV</button></div></div>
+    <div class="ec-source-layout"><div class="ec-source-directory"><span class="ec-source-kicker">Directory</span><div id="ec-source-list" role="region" aria-label="People and address directory" tabindex="0"></div></div><section class="ec-source-pane" id="ec-source-editor" aria-label="Selected master record" tabindex="0"></section></div>
+    <div class="ec-source-status" id="ec-source-status" role="status"></div>
+    </div>
+    <div id="ec-settings-accounts" class="ec-inventory" hidden>
+      <div class="ec-source-header"><h2>Retail accounts</h2><div class="ec-source-actions"><button type="button" id="ec-inv-new-account">+ Account</button><button type="button" id="ec-inv-import-accounts">Import accounts</button><button type="button" id="ec-inv-transfer" aria-expanded="false" aria-controls="ec-inv-transfer-panel">Export credentials</button></div></div>
+      <div class="ec-record-layout">
+        <aside class="ec-record-tree"><strong>Retailers &amp; groups</strong><div id="ec-inv-account-tree" aria-label="Retailers and account groups"></div>
+          <form id="ec-inv-group-form"><label><span id="ec-inv-group-context">New group</span><input id="ec-inv-account-group-name" maxlength="100" placeholder="Group name" required></label><button>Create group</button></form>
+          <details id="ec-inv-edit-group" hidden><summary>Edit group</summary>
+            <form id="ec-inv-rename-group"><label>Group name<input id="ec-inv-group-edit-name" maxlength="100" required></label><button>Rename group</button></form>
+            <button type="button" id="ec-inv-delete-group">Delete group…</button>
+            <div id="ec-inv-group-confirm" hidden><p>Remove this group and keep its accounts?</p><button type="button" id="ec-inv-keep-group">Cancel</button><button type="button" id="ec-inv-confirm-group">Confirm removal</button></div>
+          </details>
+        </aside>
+        <div class="ec-record-main">
+          <div class="ec-record-tools"><label>Retailer for import or new account<select id="ec-inv-retailer"></select></label><label>Find accounts<input id="ec-inv-search" type="search" placeholder="Email or username"></label></div>
+          <strong id="ec-inv-account-count"></strong>
+          <div class="ec-record-tools" id="ec-inv-account-bulk" hidden>
+            <span id="ec-inv-selection-count"></span><label>Retailer<select id="ec-inv-bulk-retailer"></select></label><button id="ec-inv-assign-retailer" type="button">Set retailer</button>
+            <label>Group<select id="ec-inv-bulk-group"></select></label><button type="button" id="ec-inv-add-group">Add to group</button><button type="button" id="ec-inv-remove-group">Remove from group</button>
+            <button type="button" id="ec-inv-delete-accounts">Delete selected</button>
+          </div>
+          <div class="ec-record-tools" id="ec-inv-delete-confirm" hidden><span id="ec-inv-delete-note"></span><button type="button" id="ec-inv-delete-cancel">Cancel</button><button type="button" id="ec-inv-delete-apply">Confirm deletion</button></div>
+          <div class="ec-record-scroll"><table class="ec-record-table" aria-label="Retail account directory"><thead><tr><th><input type="checkbox" id="ec-inv-check-all" aria-label="Select all visible accounts"></th><th><button type="button" data-account-sort="email">Email</button></th><th><button type="button" data-account-sort="retailer">Retailers</button></th><th><button type="button" data-account-sort="username">Username</button></th><th>Password</th><th>Groups</th></tr></thead><tbody id="ec-inv-account-list"></tbody></table></div>
+          <form class="ec-source-pane" id="ec-inv-account-form" hidden><strong id="ec-inv-account-heading">Account details</strong><div class="ec-source-fields"><label>Email<input id="ec-inv-email" type="email" autocomplete="off"></label><label>Username<input id="ec-inv-username" type="text" autocomplete="off"></label><label>Password<input id="ec-inv-password" type="text" data-ec-private autocomplete="new-password" maxlength="4096"></label></div><div class="ec-record-tools"><button type="submit">Save account</button><button type="button" id="ec-inv-close-account">Close</button></div></form>
+          <div id="ec-inv-transfer-panel" class="ec-import" hidden><strong id="ec-inv-transfer-heading"></strong><span class="ec-source-note">One login and password per line. Accounts without a saved password are skipped.</span><textarea id="ec-inv-credentials" aria-label="Exported credentials" rows="5" readonly spellcheck="false" autocomplete="off"></textarea><div class="ec-source-actions"><button type="button" id="ec-inv-export">Show export text</button><button type="button" id="ec-inv-copy-credentials" hidden>Copy credentials</button><button type="button" id="ec-inv-hide">Close &amp; clear</button></div></div>
+          <div role="status" class="ec-source-status" id="ec-inv-account-msg"></div>
+        </div>
+      </div>
+    </div>
+    <div id="ec-settings-cards" class="ec-inventory" hidden>
+      <div class="ec-source-header"><div><h2>Cards</h2></div><div class="ec-source-actions"><button type="button" id="ec-inv-new-card">+ Card</button><button type="button" id="ec-inv-import-cards">Import cards</button></div></div>
+      <div class="ec-record-layout"><aside class="ec-record-tree" aria-label="Card groups">
+        <div id="ec-card-tree" class="ec-card-tree-list">
+          <div class="ec-card-tree-root"><button type="button" class="ec-tree-link" data-card-scope="all"><span>All cards</span><small>0</small></button><button type="button" id="ec-add-card-group" aria-label="Add card group" aria-controls="ec-card-group-create" aria-expanded="false" title="Add card group">+</button></div>
+          <div class="ec-card-branches">
+            <form id="ec-card-group-create" hidden><input id="ec-card-directory-group-name" aria-label="New card group name" maxlength="80" autocomplete="off" placeholder="Group name" required><button type="submit">Add</button></form>
+            <div id="ec-card-group-rows" class="ec-card-group-rows"></div>
+            <div class="ec-card-group-row"><button type="button" class="ec-tree-link" data-card-scope="ungrouped"><span>Ungrouped</span><small>0</small></button></div>
+          </div>
+        </div>
+        <fieldset id="ec-card-membership" hidden><legend id="ec-card-membership-count">Selected cards</legend>
+          <select id="ec-card-bulk-group" aria-label="Group for selected cards"></select>
+          <div class="ec-membership-actions"><button type="button" id="ec-card-bulk-add" aria-label="Add selected cards to group">Add</button><button type="button" id="ec-card-bulk-remove" aria-label="Remove selected cards from group">Remove</button></div>
+        </fieldset>
+      </aside><div class="ec-record-main">
+        <div class="ec-record-tools"><strong id="ec-card-scope">All cards</strong><input id="ec-card-search" type="search" aria-label="Search cards" placeholder="Search label, network, last four…"><span id="ec-card-result-count" role="status"></span></div>
+        <div class="ec-record-tools" id="ec-card-bulk" hidden><span id="ec-card-selection-count"></span>
+          <button type="button" id="ec-card-delete">Delete selected</button>
+          <span id="ec-card-delete-confirm" hidden><button type="button" id="ec-card-cancel-delete">Cancel</button> <button type="button" id="ec-card-confirm-delete">Confirm deletion</button></span>
+        </div>
+        <div class="ec-record-scroll"><table class="ec-record-table" aria-label="Card directory"><thead><tr><th><input type="checkbox" id="ec-all-cards" aria-label="Select all visible cards"></th><th><button type="button" data-card-sort="label">Card label</button></th><th><button type="button" data-card-sort="network">Network</button></th><th><button type="button" data-card-sort="lastFour">Card number</button></th><th>Security code (CVV/CVC)</th></tr></thead><tbody id="ec-inv-card-list"></tbody></table></div>
+      <form class="ec-source-pane" id="ec-inv-card-form"><strong id="ec-inv-card-heading">Card details</strong><div class="ec-source-fields"><label>Card label<input required id="ec-inv-card-name" type="text" maxlength="80" autocomplete="off"></label><div class="ec-private-transient"><label>Card number<input id="ec-inv-card-number" data-ec-private type="text" inputmode="numeric" maxlength="26" autocomplete="off" aria-describedby="ec-inv-pan-error"></label><small role="status" id="ec-inv-pan-error"></small></div><label class="ec-private-transient">Security code (CVV/CVC)<input id="ec-inv-card-code" data-ec-private type="text" inputmode="numeric" pattern="[0-9]{3,4}" maxlength="4" placeholder="3–4 digits" autocomplete="off"></label><label>Last four (optional)<input id="ec-inv-four" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off"></label></div><button type="submit">Save card</button></form></div>
+      </div><div role="status" class="ec-source-status" id="ec-inv-card-msg"></div>
+    </div>
+  </section>
+</div>
+</body></html>
