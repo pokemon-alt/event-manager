@@ -2213,7 +2213,11 @@
     phone:['phone','billingPhone']
   };
   const profileFormatFields=new Map(Object.entries(profileFormatGroups).flatMap(([group,fields])=>fields.map(field=>[field,group])));
-  const profileFormatOptions=['direction','suffix','unit','name','phone'];
+  const streetLineOne=['street','billingStreet'];
+  const profileFormatOptions={
+    direction:streetLineOne,suffix:streetLineOne,unit:profileFormatGroups.street,
+    name:profileFormatGroups.name,phone:profileFormatGroups.phone
+  };
   const formatDialog=get('ec-format-dialog'),formatPreview=get('ec-format-preview');
   let formatOwner=null,formatSelection=new Map();
   function postalWords(words){
@@ -2269,7 +2273,7 @@
     return before;
   }
   function profileFormatPlan(){
-    const modes=Object.fromEntries(profileFormatOptions.map(option=>[option,get('ec-format-'+option).checked]));
+    const modes=Object.fromEntries(Object.keys(profileFormatOptions).map(option=>[option,get('ec-format-'+option).checked]));
     const changes=new Map(),kept=new Set(),reserve=new Map();
     if(currentList()!==formatOwner)return changes;
     const shippingSelected=[...formatSelection.values()].some(fields=>shippingStreetFields.some(field=>fields.has(field)));
@@ -2317,23 +2321,37 @@
   }
   window.addEventListener('resize',positionProfileFormatDialog);
   window.visualViewport?.addEventListener('resize',positionProfileFormatDialog);
+  function clearProfileFormatPreview(){
+    for(const body of [...formatPreview.tBodies])body.remove();
+    get('ec-format-results').hidden=true;
+  }
   function showProfileFormatPreview(){
-    const changes=profileFormatPlan();
-    const sample=document.createDocumentFragment();
-    let shown=0,fieldCount=0;
+    const changes=profileFormatPlan(),fields=new Set();
+    let fieldCount=0;
+    for(const {edit} of changes.values()){
+      for(const field of Object.keys(edit)){fields.add(field);fieldCount++;}
+    }
+    clearProfileFormatPreview();
+    let shown=0;
     for(const {row,edit} of changes.values()){
+      if(shown>=12)break;
+      const body=formatPreview.createTBody();
+      const title=document.createElement('th');
+      title.colSpan=2;title.scope='rowgroup';title.textContent=row.nickname;
+      body.insertRow().append(title);
       for(const [field,after] of Object.entries(edit)){
-        fieldCount++;
-        if(shown>=12)continue;
-        const line=document.createElement('li');
-        const caption=fieldLabels.get(field);
-        line.textContent=row.nickname+' · '+caption+' · '+row[field]+' → '+after;
-        sample.append(line);
+        if(shown>=12)break;
+        if(fields.size>1){
+          const caption=body.insertRow().insertCell();
+          caption.colSpan=2;caption.className='ec-format-field';caption.textContent=fieldLabels.get(field);
+        }
+        const line=body.insertRow();
+        line.insertCell().textContent=row[field]??'';
+        line.insertCell().textContent=after;
         shown++;
       }
     }
-    formatPreview.replaceChildren(sample);
-    formatPreview.hidden=!shown;
+    if(shown)get('ec-format-results').hidden=false;
     const summary=changes.size?changes.size+(changes.size===1?' profile will change.':' profiles will change.'):'No changes for the selected cells.';
     get('ec-format-status').textContent=summary+(fieldCount>shown?' Showing '+shown+' of '+fieldCount+' changed cells.':'');
     get('ec-format-apply').disabled=!changes.size;
@@ -2342,15 +2360,18 @@
   formatButton.addEventListener('click',()=>{
     formatOwner=currentList();if(!formatOwner)return;
     formatSelection=new Map([...selectedCells].map(([key,fields])=>[key,new Set(fields)]));
-    const groups=new Set([...formatSelection.values()].flatMap(fields=>[...fields].map(field=>profileFormatFields.get(field))));
-    for(const group of Object.keys(profileFormatGroups))get('ec-format-'+group+'-options').hidden=!groups.has(group);
+    const fields=new Set([...formatSelection.values()].flatMap(selected=>[...selected]));
+    for(const [option,appliesTo] of Object.entries(profileFormatOptions)){
+      get('ec-format-'+option).closest('label').hidden=!appliesTo.some(field=>fields.has(field));
+    }
+    get('ec-format-preserve').hidden=!shippingStreetFields.some(field=>fields.has(field));
     showProfileFormatPreview();
     formatDialog.showModal();
     positionProfileFormatDialog();
   });
-  for(const option of profileFormatOptions)get('ec-format-'+option).addEventListener('change',showProfileFormatPreview);
+  for(const option of Object.keys(profileFormatOptions))get('ec-format-'+option).addEventListener('change',showProfileFormatPreview);
   get('ec-format-cancel').addEventListener('click',()=>formatDialog.close());
-  formatDialog.addEventListener('close',()=>{formatOwner=null;formatSelection.clear();formatPreview.replaceChildren();});
+  formatDialog.addEventListener('close',()=>{formatOwner=null;formatSelection.clear();clearProfileFormatPreview();});
   get('ec-format-apply').addEventListener('click',()=>{
     const list=formatOwner,changes=profileFormatPlan();
     if(!changes.size){showProfileFormatPreview();return;}

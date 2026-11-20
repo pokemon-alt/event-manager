@@ -55,25 +55,22 @@
       <footer class="ec-source-actions"><button type="button" id="ec-ai-close">Close</button><button type="button" id="ec-ai-settings" hidden>Open Settings</button><button type="button" id="ec-ai-preview">Preview changes</button><button type="button" id="ec-ai-apply" class="ec-primary" disabled>Apply changes</button></footer>
     </dialog>
     <dialog id="ec-format-dialog" aria-labelledby="ec-format-title">
-      <h2 id="ec-format-title">Format selected cells</h2>
-      <fieldset id="ec-format-street-options">
-        <legend>Street addresses</legend>
-        <label class="ec-format-toggle">Directions<input type="checkbox" role="switch" id="ec-format-direction" checked></label>
-        <label class="ec-format-toggle">Street types<input type="checkbox" role="switch" id="ec-format-suffix" checked></label>
-        <label class="ec-format-toggle">Apartment and suite labels<input type="checkbox" role="switch" id="ec-format-unit"></label>
-        <p class="ec-source-note">On uses abbreviations. One profile keeps the original shipping street lines for each saved destination.</p>
-      </fieldset>
-      <fieldset id="ec-format-name-options">
-        <legend>Names</legend>
-        <label class="ec-format-toggle">Remove extra spaces<input type="checkbox" role="switch" id="ec-format-name"></label>
-      </fieldset>
-      <fieldset id="ec-format-phone-options">
-        <legend>U.S. phone numbers</legend>
-        <label class="ec-format-toggle">Format as (202) 555-0100<input type="checkbox" role="switch" id="ec-format-phone"></label>
-      </fieldset>
+      <h2 id="ec-format-title">Format selection</h2>
+      <div class="ec-format-options" role="group" aria-label="Formatting options">
+        <label class="ec-format-toggle">Abbreviate directions<input type="checkbox" role="switch" id="ec-format-direction" checked></label>
+        <label class="ec-format-toggle">Abbreviate street types<input type="checkbox" role="switch" id="ec-format-suffix" checked></label>
+        <label class="ec-format-toggle">Abbreviate apartment and suite labels<input type="checkbox" role="switch" id="ec-format-unit"></label>
+        <label class="ec-format-toggle">Trim name spacing<input type="checkbox" role="switch" id="ec-format-name"></label>
+        <label class="ec-format-toggle">Format U.S. phone numbers<input type="checkbox" role="switch" id="ec-format-phone"></label>
+      </div>
+      <p id="ec-format-preserve" class="ec-source-note" hidden>One original shipping address per destination is kept.</p>
       <p id="ec-format-status" class="ec-source-note" role="status"></p>
-      <ul id="ec-format-preview" aria-label="Before and after values" hidden></ul>
-      <div class="ec-source-actions"><button type="button" id="ec-format-cancel">Cancel</button><button type="button" id="ec-format-apply" class="ec-primary" disabled>Apply changes</button></div>
+      <div id="ec-format-results" role="region" aria-label="Change preview" tabindex="0" hidden>
+        <table id="ec-format-preview" aria-label="Before and after values">
+          <thead><tr><th scope="col">Before</th><th scope="col">After</th></tr></thead>
+        </table>
+      </div>
+      <div class="ec-source-actions"><button type="button" id="ec-format-cancel">Cancel</button><button type="button" id="ec-format-apply" class="ec-primary" disabled>Apply</button></div>
     </dialog>
     <dialog id="ec-defaults-dialog" aria-labelledby="ec-defaults-title">
       <h2 id="ec-defaults-title">Restore to default</h2>
