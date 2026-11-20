@@ -2219,9 +2219,8 @@
   function postalWords(words){
     const spellings=new Map();
     for(const [long,short] of Object.entries(words)){
-      const pair={long,short};
-      spellings.set(long.toLowerCase(),pair);
-      spellings.set(short.toLowerCase(),pair);
+      spellings.set(long.toLowerCase(),short);
+      spellings.set(short.toLowerCase(),short);
     }
     return spellings;
   }
@@ -2229,7 +2228,7 @@
   const postalSuffixes=postalWords({Street:'St',Avenue:'Ave',Boulevard:'Blvd',Circle:'Cir',Court:'Ct',Drive:'Dr',Highway:'Hwy',Lane:'Ln',Parkway:'Pkwy',Place:'Pl',Road:'Rd',Terrace:'Ter',Trail:'Trl',Way:'Way'});
   const postalUnits=postalWords({Apartment:'Apt',Suite:'Ste'});
   const postalLookup=(words,value)=>words.get(value.toLowerCase().replace(/\./g,''));
-  const postalSpelling=(words,value,mode)=>postalLookup(words,value)?.[mode]??value;
+  const postalSpelling=(words,value,enabled)=>enabled?(postalLookup(words,value)??value):value;
   function formatPostalStreet(value,field,modes){
     const text=value.trimEnd(),trailing=value.slice(text.length),unit=text.match(unitAtEnd);
     const unitText=unit?text.slice(unit.index):'';
@@ -2256,10 +2255,7 @@
   }
   function formatProfileCell(row,field,modes){
     const before=row[field]||'',group=profileFormatFields.get(field);
-    if(group==='name'&&modes.name){
-      const clean=before.trim().replace(/\s+/g,' ');
-      return modes.name==='upper'?clean.toUpperCase():clean;
-    }
+    if(group==='name'&&modes.name)return before.trim().replace(/\s+/g,' ');
     const country=field.startsWith('billing')?row.billingCountry:row.country;
     if(!isUSAddress(country))return before;
     if(group==='street')return formatPostalStreet(before,field,modes);
@@ -2267,13 +2263,13 @@
       const match=before.match(/^\s*(?:\+1[ .-]*)?(?:\((\d{3})\)|(\d{3}))[ .-]*(\d{3})[ .-]*(\d{4})\s*$/);
       if(match){
         const area=match[1]||match[2];
-        return modes.phone==='digits'?area+match[3]+match[4]:'('+area+') '+match[3]+'-'+match[4];
+        return '('+area+') '+match[3]+'-'+match[4];
       }
     }
     return before;
   }
   function profileFormatPlan(){
-    const modes=Object.fromEntries(profileFormatOptions.map(option=>[option,get('ec-format-'+option).value]));
+    const modes=Object.fromEntries(profileFormatOptions.map(option=>[option,get('ec-format-'+option).checked]));
     const changes=new Map(),kept=new Set(),reserve=new Map();
     if(currentList()!==formatOwner)return changes;
     const shippingSelected=[...formatSelection.values()].some(fields=>shippingStreetFields.some(field=>fields.has(field)));
@@ -2299,6 +2295,28 @@
     }
     return changes;
   }
+  function positionProfileFormatDialog(){
+    if(!formatDialog.open)return;
+    const viewport=window.visualViewport,gap=12;
+    const left=(viewport?.offsetLeft??0)+gap,top=(viewport?.offsetTop??0)+gap;
+    const availableWidth=(viewport?.width??innerWidth)-2*gap,availableHeight=(viewport?.height??innerHeight)-2*gap;
+    formatDialog.style.maxWidth=availableWidth+'px';
+    formatDialog.style.maxHeight=availableHeight+'px';
+    const width=formatDialog.offsetWidth,height=formatDialog.offsetHeight;
+    const right=left+availableWidth,bottom=top+availableHeight;
+    const anchor=formatButton.getBoundingClientRect();
+    const clamp=(value,min,max)=>Math.max(min,Math.min(value,max));
+    let x=clamp(anchor.left,left,right-width),y=clamp(anchor.top,top,bottom-height);
+    if(anchor.right+gap+width<=right)x=anchor.right+gap;
+    else if(anchor.left-gap-width>=left)x=anchor.left-gap-width;
+    else if(anchor.bottom+gap+height<=bottom)y=anchor.bottom+gap;
+    else if(anchor.top-gap-height>=top)y=anchor.top-gap-height;
+    else y=top+(availableHeight-height)/2;
+    formatDialog.style.left=x+'px';
+    formatDialog.style.top=y+'px';
+  }
+  window.addEventListener('resize',positionProfileFormatDialog);
+  window.visualViewport?.addEventListener('resize',positionProfileFormatDialog);
   function showProfileFormatPreview(){
     const changes=profileFormatPlan();
     const sample=document.createDocumentFragment();
@@ -2319,6 +2337,7 @@
     const summary=changes.size?changes.size+(changes.size===1?' profile will change.':' profiles will change.'):'No changes for the selected cells.';
     get('ec-format-status').textContent=summary+(fieldCount>shown?' Showing '+shown+' of '+fieldCount+' changed cells.':'');
     get('ec-format-apply').disabled=!changes.size;
+    positionProfileFormatDialog();
   }
   formatButton.addEventListener('click',()=>{
     formatOwner=currentList();if(!formatOwner)return;
@@ -2327,6 +2346,7 @@
     for(const group of Object.keys(profileFormatGroups))get('ec-format-'+group+'-options').hidden=!groups.has(group);
     showProfileFormatPreview();
     formatDialog.showModal();
+    positionProfileFormatDialog();
   });
   for(const option of profileFormatOptions)get('ec-format-'+option).addEventListener('change',showProfileFormatPreview);
   get('ec-format-cancel').addEventListener('click',()=>formatDialog.close());

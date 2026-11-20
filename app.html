@@ -58,18 +58,18 @@
       <h2 id="ec-format-title">Format selected cells</h2>
       <fieldset id="ec-format-street-options">
         <legend>Street addresses</legend>
-        <p class="ec-source-note">One profile keeps the original shipping street lines for each saved destination.</p>
-        <label>Directions<select id="ec-format-direction"><option value="">As entered</option><option value="short" selected>Abbreviate</option><option value="long">Spell out</option></select></label>
-        <label>Street types<select id="ec-format-suffix"><option value="">As entered</option><option value="short" selected>Abbreviate</option><option value="long">Spell out</option></select></label>
-        <label>Apartment and suite labels<select id="ec-format-unit"><option value="" selected>As entered</option><option value="short">Abbreviate</option><option value="long">Spell out</option></select></label>
+        <label class="ec-format-toggle">Directions<input type="checkbox" role="switch" id="ec-format-direction" checked></label>
+        <label class="ec-format-toggle">Street types<input type="checkbox" role="switch" id="ec-format-suffix" checked></label>
+        <label class="ec-format-toggle">Apartment and suite labels<input type="checkbox" role="switch" id="ec-format-unit"></label>
+        <p class="ec-source-note">On uses abbreviations. One profile keeps the original shipping street lines for each saved destination.</p>
       </fieldset>
       <fieldset id="ec-format-name-options">
         <legend>Names</legend>
-        <label>Format<select id="ec-format-name"><option value="">As entered</option><option value="trim">Remove extra spaces</option><option value="upper">Uppercase</option></select></label>
+        <label class="ec-format-toggle">Remove extra spaces<input type="checkbox" role="switch" id="ec-format-name"></label>
       </fieldset>
       <fieldset id="ec-format-phone-options">
         <legend>U.S. phone numbers</legend>
-        <label>Format<select id="ec-format-phone"><option value="">As entered</option><option value="digits">Digits only</option><option value="national">(202) 555-0100</option></select></label>
+        <label class="ec-format-toggle">Format as (202) 555-0100<input type="checkbox" role="switch" id="ec-format-phone"></label>
       </fieldset>
       <p id="ec-format-status" class="ec-source-note" role="status"></p>
       <ul id="ec-format-preview" aria-label="Before and after values" hidden></ul>
