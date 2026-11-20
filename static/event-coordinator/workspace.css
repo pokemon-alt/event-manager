@@ -170,6 +170,9 @@
     #event-coordinator .ec-edit-tools button{min-height:28px;font-size:12px;padding:3px 8px}
     #event-coordinator .ec-edit-tools [aria-pressed=true]{background:var(--ec-soft);border-color:var(--ec-accent)}
     #event-coordinator .ec-edit-tools input:not([type=checkbox]){width:min(230px,100%);min-height:28px}
+    #event-coordinator #ec-format-address{position:fixed;z-index:8;min-width:52px;min-height:32px;padding:3px 12px;border-color:#ba86e1;background:#321e48;color:#f6e3ff;box-shadow:0 3px 15px #090511b3;touch-action:manipulation}
+    #event-coordinator #ec-format-address:hover,#event-coordinator #ec-format-address:focus-visible{background:#482962}
+    @media(pointer:coarse){#event-coordinator #ec-format-address{min-height:44px;min-width:56px}}
     #event-coordinator .ec-sheet input.ec-selected-cell{box-shadow:inset 0 0 0 1px #c49aeb;background:#9a6db622}
     #event-coordinator .ec-sheet-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
     #event-coordinator .ec-column-jumps{display:flex;gap:5px;align-items:center;flex-wrap:wrap}

@@ -1925,13 +1925,66 @@
   window.visualViewport?.addEventListener('scroll',scheduleSheetHeight);
   let cellAnchor=null,selectingCells=false;
   let cellDrag=null,dragFrame=0;
+  const formatButton=get('ec-format-address');
+  let formatButtonEligible=false,formatButtonFrame=0,formatPoint=null;
+  function visibleFormatCell(input,bounds){
+    if(!input?.classList.contains('ec-selected-cell')||!profileFormatFields.has(input.dataset.field))return null;
+    const rect=input.getBoundingClientRect();
+    const left=Math.max(rect.left,bounds.left),right=Math.min(rect.right,bounds.right);
+    const top=Math.max(rect.top,bounds.top),bottom=Math.min(rect.bottom,bounds.bottom);
+    return right-left>=8&&bottom-top>=8?{left,right,top,bottom}:null;
+  }
+  function positionFormatButton(){
+    if(!formatButtonEligible||cellDrag?.active){formatButton.hidden=true;return;}
+    const viewport=window.visualViewport,viewportLeft=viewport?.offsetLeft??0,viewportTop=viewport?.offsetTop??0;
+    const box=sheetScroller.getBoundingClientRect();
+    const pinned=sheetScroller.hasAttribute('data-wide-nickname')?box.left:sheetHeaders.firstElementChild?.getBoundingClientRect().right??box.left;
+    const bounds={
+      left:Math.max(viewportLeft,box.left+sheetScroller.clientLeft,pinned),
+      right:Math.min(viewportLeft+(viewport?.width??innerWidth),box.left+sheetScroller.clientLeft+sheetScroller.clientWidth),
+      top:Math.max(viewportTop,box.top+sheetScroller.clientTop,sheetHeaders.getBoundingClientRect().bottom),
+      bottom:Math.min(viewportTop+(viewport?.height??innerHeight),box.top+sheetScroller.clientTop+sheetScroller.clientHeight)
+    };
+    const row=formatPoint&&sheetBody.querySelector('tr[data-sheet-key="'+CSS.escape(formatPoint.row)+'"]');
+    let anchor=visibleFormatCell(row?.cells[formatPoint?.column]?.querySelector('input'),bounds);
+    if(!anchor){
+      const cells=sheetBody.querySelectorAll('input.ec-selected-cell');
+      for(let i=cells.length-1;i>=0&&!anchor;i--)anchor=visibleFormatCell(cells[i],bounds);
+    }
+    if(!anchor){formatButton.hidden=true;return;}
+    formatButton.hidden=false;
+    const width=formatButton.offsetWidth,height=formatButton.offsetHeight,gap=6;
+    if(bounds.right-bounds.left<width||bounds.bottom-bounds.top<height){formatButton.hidden=true;return;}
+    const clamp=(value,start,end)=>Math.max(start,Math.min(value,end));
+    const maxX=bounds.right-width,maxY=bounds.bottom-height;
+    let x=clamp(anchor.left,bounds.left,maxX);
+    let y=clamp((anchor.top+anchor.bottom-height)/2,bounds.top,maxY);
+    if(anchor.right+gap<=maxX)x=anchor.right+gap;
+    else if(anchor.left-gap-width>=bounds.left)x=anchor.left-gap-width;
+    else if(anchor.bottom+gap<=maxY)y=anchor.bottom+gap;
+    else y=clamp(anchor.top-gap-height,bounds.top,maxY);
+    formatButton.style.left=x+'px';
+    formatButton.style.top=y+'px';
+  }
+  function scheduleFormatButton(){
+    if(formatButtonFrame)return;
+    formatButtonFrame=requestAnimationFrame(()=>{formatButtonFrame=0;positionFormatButton();});
+  }
+  sheetScroller.addEventListener('scroll',scheduleFormatButton,{passive:true});
+  window.addEventListener('scroll',scheduleFormatButton,{passive:true});
+  window.addEventListener('resize',scheduleFormatButton);
+  window.visualViewport?.addEventListener('scroll',scheduleFormatButton,{passive:true});
+  window.visualViewport?.addEventListener('resize',scheduleFormatButton);
+  new ResizeObserver(scheduleFormatButton).observe(sheetScroller);
   function showSelection(){
     const count=selectedCellCount,editing=!bulkValue.hidden;
     updateSheetHistoryControls();
     sheetScroller.toggleAttribute('data-picking-cells',selectingCells);
     get('ec-select-cells').setAttribute('aria-pressed',String(selectingCells));
     get('ec-match-billing').hidden=!count||editing;
-    get('ec-format-address').hidden=editing||![...selectedCells.values()].some(fields=>[...fields].some(field=>profileFormatFields.has(field)));
+    formatButtonEligible=!editing&&count>0&&[...selectedCells.values()].some(fields=>[...fields].some(field=>profileFormatFields.has(field)));
+    if(!formatButtonEligible)formatButton.hidden=true;
+    scheduleFormatButton();
     get('ec-edit-cells').hidden=!count||!bulkValue.hidden||(!selectingCells&&count<2);
     get('ec-apply-cells').hidden=!editing;get('ec-cancel-cells').hidden=!editing;
     get('ec-selection-info').textContent=count?count+(count===1?' cell':' cells')+' selected':selectingCells?'Tap cells to select them.':'';
@@ -1948,13 +2001,14 @@
         if(input?.hasAttribute('data-row'))input.classList.toggle('ec-selected-cell',!!fields?.has(input.dataset.field));
       }
     }
+    scheduleFormatButton();
   }
   function setSheetSelection(cells,count){
     selectedCells=cells;selectedCellCount=count;
     paintSheetSelection();bulkValue.hidden=true;showSelection();
   }
   function resetSheetSelection(){
-    stopCellDrag();cellAnchor=null;selectingCells=false;setSheetSelection(new Map(),0);
+    stopCellDrag();cellAnchor=null;formatPoint=null;selectingCells=false;setSheetSelection(new Map(),0);
   }
   function sheetPoint(td){
     const index=td?.parentElement?.dataset.sheetIndex;
@@ -1963,7 +2017,7 @@
   }
   function selectSingleCell(input){
     const {row,field}=input.dataset;
-    cellAnchor=sheetPoint(input.closest('td'));
+    cellAnchor=sheetPoint(input.closest('td'));formatPoint=cellAnchor;
     setSheetSelection(new Map([[row,new Set([field])]]),1);
   }
   function toggleSelectedCell(input){
@@ -1971,7 +2025,7 @@
     const adding=!fields.delete(field);
     if(adding)fields.add(field);
     if(fields.size)selectedCells.set(row,fields);else selectedCells.delete(row);
-    cellAnchor=sheetPoint(input.closest('td'));
+    cellAnchor=sheetPoint(input.closest('td'));formatPoint=cellAnchor;
     setSheetSelection(selectedCells,selectedCellCount+(adding?1:-1));
   }
   function selectRange(from,to){
@@ -1987,6 +2041,7 @@
         if(row)cells.set(row,fields);
       }
     }
+    formatPoint=to;
     setSheetSelection(cells,cells.size*fields.size);
   }
   function stopCellDrag(){
@@ -1995,6 +2050,7 @@
     cancelAnimationFrame(dragFrame);dragFrame=0;
     sheetScroller.removeAttribute('data-dragging-cells');
     if(sheetScroller.hasPointerCapture(id))sheetScroller.releasePointerCapture(id);
+    scheduleFormatButton();
   }
   function edgeStep(point,start,end){
     const band=Math.min(28,(end-start)/4);
@@ -2042,7 +2098,7 @@
       const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('td');
       const point=sheetBody.contains(target)?sheetPoint(target):null;
       if(point?.row===d.start.row&&point.column===d.start.column)return; // Preserve normal text selection inside one input.
-      d.active=true;cellAnchor=d.start;
+      d.active=true;cellAnchor=d.start;formatButton.hidden=true;
       sheetScroller.setPointerCapture(d.id);sheetScroller.setAttribute('data-dragging-cells','');
       sheetScroller.focus({preventScroll:true});
     }
@@ -2264,7 +2320,7 @@
     get('ec-format-status').textContent=summary+(fieldCount>shown?' Showing '+shown+' of '+fieldCount+' changed cells.':'');
     get('ec-format-apply').disabled=!changes.size;
   }
-  get('ec-format-address').addEventListener('click',()=>{
+  formatButton.addEventListener('click',()=>{
     formatOwner=currentList();if(!formatOwner)return;
     formatSelection=new Map([...selectedCells].map(([key,fields])=>[key,new Set(fields)]));
     const groups=new Set([...formatSelection.values()].flatMap(fields=>[...fields].map(field=>profileFormatFields.get(field))));
@@ -2281,11 +2337,11 @@
     trackSheetEdit(list,[...changes.values()].map(({row})=>row.draftKey??row.accountId),()=>{
       for(const {row,edit} of changes.values())applySheetEdits(list,row,edit);
     });
-    const selection=new Map(formatSelection),wasSelecting=selectingCells;
+    const selection=new Map(formatSelection),wasSelecting=selectingCells,point=formatPoint;
     formatDialog.close();
     redrawSheetEdits(list);
     for(const key of selection.keys())if(!sheetRowsByKey.has(key))selection.delete(key);
-    selectingCells=wasSelecting;
+    selectingCells=wasSelecting;formatPoint=point;
     setSheetSelection(selection,[...selection.values()].reduce((count,fields)=>count+fields.size,0));
   });
 
