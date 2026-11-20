@@ -312,9 +312,7 @@ def install(app, pinned):
     listeners = {}
 
     from event_ai import install as install_ai
-    from processor_runner import install_processor
     install_ai(app, pinned)
-    install_processor(app, pinned)
 
     @app.get('/api/event-coordinator/revision')
     def current_revision(request: Request):

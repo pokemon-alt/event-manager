@@ -55,35 +55,12 @@
       <p id="ec-ai-status" role="status" aria-live="polite"></p>
       <footer class="ec-source-actions"><button type="button" id="ec-ai-close">Close</button><button type="button" id="ec-ai-settings" hidden>Open Settings</button><button type="button" id="ec-ai-run" class="ec-primary" disabled>Run edit</button></footer>
     </dialog>
-    <dialog id="ec-format-dialog" aria-labelledby="ec-format-title">
-      <h2 id="ec-format-title">Format selection</h2>
-      <div id="ec-expression-controls" hidden>
-        <div id="ec-expression-rules" role="group" aria-label="Processor rules"></div>
-        <button type="button" id="ec-expression-open-settings" hidden>Open processor settings</button>
-      </div>
-      <div id="ec-format-options" class="ec-format-options" role="group" aria-label="Formatting options">
-        <label class="ec-format-toggle">Abbreviate directions<input type="checkbox" role="switch" id="ec-format-direction" checked></label>
-        <label class="ec-format-toggle">Abbreviate street types<input type="checkbox" role="switch" id="ec-format-suffix" checked></label>
-        <label class="ec-format-toggle">Abbreviate apartment and suite labels<input type="checkbox" role="switch" id="ec-format-unit"></label>
-        <label class="ec-format-toggle">Trim name spacing<input type="checkbox" role="switch" id="ec-format-name"></label>
-        <label class="ec-format-toggle">Format U.S. phone numbers<input type="checkbox" role="switch" id="ec-format-phone"></label>
-      </div>
-      <p id="ec-format-preserve" class="ec-source-note" hidden>One original shipping address per destination is kept.</p>
-      <p id="ec-format-status" class="ec-source-note" role="status"></p>
-      <div id="ec-format-results" role="region" aria-label="Change preview" tabindex="0" hidden>
-        <table id="ec-format-preview" aria-label="Before and after values">
-          <thead><tr><th scope="col">Before</th><th scope="col">After</th></tr></thead>
-        </table>
-      </div>
-      <div class="ec-source-actions"><button type="button" id="ec-format-cancel">Cancel</button><button type="button" id="ec-format-apply" class="ec-primary" disabled>Apply</button></div>
-    </dialog>
     <dialog id="ec-defaults-dialog" aria-labelledby="ec-defaults-title">
       <h2 id="ec-defaults-title">Restore to default</h2>
       <p class="ec-source-note">Use the current values from the linked address, retail account, and card.</p>
       <label>Restore<select id="ec-defaults-scope"></select></label>
       <div class="ec-source-actions"><button type="button" id="ec-defaults-cancel">Cancel</button><button type="button" id="ec-defaults-apply" class="ec-primary">Restore</button></div>
     </dialog>
-    <button type="button" id="ec-format-address" aria-haspopup="dialog" hidden>Jig</button>
     <div id="ec-sheet-scroll" class="ec-sheet"><table id="ec-profile-table" aria-label="Live profile sheet"><colgroup id="ec-column-widths"></colgroup><thead><tr id="ec-column-heads"></tr></thead><tbody id="ec-rows" aria-label="Live profiles"></tbody></table><div id="ec-empty" class="ec-empty" hidden></div></div>
     <div class="ec-footer"><span id="ec-rendered-count">0 profiles</span><span>Cell edits are saved in this list</span></div>
     <div id="ec-status" class="ec-status" aria-live="polite"></div>
@@ -102,24 +79,6 @@
   </dialog>
   <section id="ec-app-settings" aria-labelledby="ec-settings-heading" hidden>
     <h2 id="ec-settings-heading">Settings</h2>
-    <form id="ec-expression-settings" class="ec-source-pane" autocomplete="off">
-      <h3>Processor</h3>
-      <label>Saved rules<select id="ec-expression-list"></select></label>
-      <label>Rule name<input id="ec-expression-name" required maxlength="80" placeholder="Numbered profile"></label>
-      <div class="ec-processor-target">
-        <label>Offer for<select id="ec-expression-field"><option value="nickname">Profile nickname</option><option value="group">Profile group</option><option value="notes">Notes</option></select></label>
-        <label class="ec-processor-enabled"><input type="checkbox" id="ec-expression-enabled" checked> Enabled</label>
-      </div>
-      <label>Python script<textarea id="ec-expression-template" required maxlength="16000" rows="6" spellcheck="false" autocapitalize="off" aria-describedby="ec-expression-guide"></textarea></label>
-      <p id="ec-expression-guide" class="ec-source-note">Start with <code id="ec-expression-argument">def process(profile_nickname):</code> and return a string. The argument is the current cell value.</p>
-      <div class="ec-processor-test">
-        <label>Input value<textarea id="ec-processor-input" rows="3" maxlength="8000" placeholder="Enter a value to test"></textarea></label>
-        <label>Output<textarea id="ec-processor-output" rows="3" readonly></textarea></label>
-        <div class="ec-source-actions"><button type="button" id="ec-processor-run">Run</button><span id="ec-processor-status" class="ec-source-note" role="status"></span></div>
-      </div>
-      <div class="ec-source-actions"><button type="submit" id="ec-expression-save" class="ec-primary">Save rule</button><button type="button" id="ec-expression-remove" hidden>Remove rule</button></div>
-      <p id="ec-expression-status" role="status"></p>
-    </form>
     <form id="ec-ai-key-form" class="ec-source-pane ec-private-transient" autocomplete="off">
       <div class="ec-key-header"><h3>OpenAI API key</h3><span id="ec-ai-key-badge" hidden>Key saved</span></div>
       <p>Use your OpenAI account to edit profile sheets. The key is encrypted on the server and shared across your devices in this workspace.</p>
