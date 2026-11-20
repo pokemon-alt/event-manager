@@ -214,7 +214,16 @@
     #event-coordinator #ec-app-settings{padding:clamp(14px,2.5vw,30px);display:grid;gap:16px}
     #event-coordinator #ec-app-settings h2,#event-coordinator #ec-app-settings h3,#event-coordinator #ec-app-settings p{margin:0}
     #event-coordinator #ec-app-settings h2{font-size:21px;letter-spacing:-.03em}
-    #event-coordinator #ec-ai-key-form{max-width:560px;display:grid;gap:12px;padding:clamp(16px,2vw,24px)}
+    #event-coordinator :is(#ec-ai-key-form,#ec-ai-preferences,#ec-expression-settings){max-width:560px;display:grid;gap:12px;padding:clamp(16px,2vw,24px)}
+    #event-coordinator #ec-expression-settings label{display:grid;gap:5px;font-size:13px;font-weight:600}
+    #event-coordinator #ec-expression-status{color:var(--ec-muted);font-size:13px}
+    #event-coordinator #ec-expression-status:empty{display:none}
+    #event-coordinator #ec-expression-settings code{color:var(--ec-text);white-space:nowrap}
+    #event-coordinator #ec-expression-settings textarea{width:100%;box-sizing:border-box;resize:vertical}
+    #event-coordinator #ec-expression-template{font:13px/1.5 var(--ec-mono);tab-size:4}
+    #event-coordinator :is(.ec-processor-target,.ec-processor-test){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}
+    #event-coordinator #ec-expression-settings .ec-processor-enabled{display:flex;align-items:center;gap:8px;min-height:34px}
+    #event-coordinator .ec-processor-test .ec-source-actions{grid-column:1/-1}
     #event-coordinator .ec-key-header{display:flex;gap:14px;align-items:center;justify-content:space-between}
     #event-coordinator .ec-key-header h3{font-size:16px}
     #event-coordinator #ec-ai-key-badge{font-size:12px;color:var(--ec-accent)}
@@ -223,6 +232,11 @@
     #event-coordinator #ec-ai-key-form label{font-size:13px;font-weight:600}
     #event-coordinator #ec-ai-key-form a{color:var(--ec-accent);font-size:13px}
     #event-coordinator #ec-ai-key-status:empty{display:none}
+    #event-coordinator #ec-ai-preferences label{display:grid;gap:5px;font-size:13px;font-weight:600;min-width:0}
+    #event-coordinator .ec-ai-model-row{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
+    #event-coordinator .ec-ai-model-row label{flex:1 1 200px}
+    #event-coordinator :is(#ec-ai-model-status,#ec-ai-preferences-status){color:var(--ec-muted);font-size:13px}
+    #event-coordinator :is(#ec-ai-model-status,#ec-ai-preferences-status):empty{display:none}
     #event-coordinator #ec-sources{padding:18px 22px 22px;display:grid;gap:16px;min-width:0}
     #event-coordinator .ec-source-header,#event-coordinator .ec-source-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
     #event-coordinator .ec-source-actions{justify-content:flex-start}
@@ -326,6 +340,8 @@
     #event-coordinator #ec-defaults-dialog label,#event-coordinator #ec-format-dialog label{display:grid;gap:5px;margin-block:12px}
     #event-coordinator #ec-format-dialog{position:fixed;inset:auto;margin:0;width:390px;max-height:88dvh;overflow:auto;box-sizing:border-box}
     #event-coordinator #ec-format-dialog .ec-format-options{margin:8px 0}
+    #event-coordinator #ec-expression-controls{margin:8px 0}
+    #event-coordinator #ec-expression-rules small{display:block;color:var(--ec-muted)}
     #event-coordinator #ec-format-dialog .ec-format-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:34px;margin:0;cursor:pointer}
     @media(pointer:coarse){#event-coordinator #ec-format-dialog .ec-format-toggle{min-height:44px}}
     #event-coordinator #ec-format-dialog input[role=switch]{appearance:none;flex:0 0 38px;width:38px;height:22px;min-height:0;margin:0;padding:2px;border:1px solid var(--ec-line);border-radius:999px;background:var(--ec-soft);cursor:pointer}
@@ -346,15 +362,10 @@
     #event-coordinator #ec-ai-dialog::backdrop{background:#090412a8;backdrop-filter:blur(3px)}
     #event-coordinator #ec-ai-dialog h2{margin:0 0 14px;font-size:19px}
     #event-coordinator #ec-ai-dialog label{display:grid;gap:5px;margin:10px 0;font-weight:600}
+    #event-coordinator #ec-ai-columns{margin:10px 0;padding:4px 12px;border:1px solid var(--ec-line);border-radius:6px}
+    #event-coordinator #ec-ai-columns label{display:inline-flex;align-items:center;gap:5px;margin:6px 14px 6px 0;font-weight:400}
     #event-coordinator #ec-ai-dialog textarea{width:100%;min-height:82px;box-sizing:border-box;resize:vertical;padding:9px;border:1px solid var(--ec-line);border-radius:6px;background:var(--ec-bg);color:var(--ec-text);font:inherit}
     #event-coordinator #ec-ai-status{margin:10px 0;color:var(--ec-text);overflow-wrap:anywhere}
-    #event-coordinator #ec-ai-results{max-height:30dvh;overflow:auto;margin:10px 0;border:1px solid var(--ec-line);border-radius:6px}
-    #event-coordinator #ec-ai-results table{width:100%;border-collapse:collapse;font-size:12px;text-align:left}
-    #event-coordinator #ec-ai-results :is(td,th){padding:5px 8px;vertical-align:top;overflow-wrap:anywhere;white-space:pre-wrap}
-    #event-coordinator #ec-ai-results th{position:sticky;top:0;background:var(--ec-panel)}
-    #event-coordinator #ec-ai-results tr+tr{border-top:1px solid var(--ec-line)}
-    #event-coordinator #ec-ai-changes[data-windowed]{table-layout:fixed}
-    #event-coordinator #ec-ai-changes .ec-ai-spacer td{padding:0;border:0}
     #event-coordinator #ec-ai-dialog footer{justify-content:flex-end}
     #event-coordinator .ec-flag-cell{text-align:center}
     #event-coordinator #ec-open-export{min-height:28px;padding:3px 10px;font-size:12px;color:var(--ec-text)}

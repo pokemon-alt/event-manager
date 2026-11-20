@@ -522,6 +522,8 @@
     ['group','Profile group'],['notes','Notes'],['onlyCheckoutOnce','Only checkout once'],['matchNameOnCardAndAddress','Match name on card and address']
   ];
   const readOnlyFields=new Set(['email','login','card']);
+  const processorArguments=new Map([['nickname','profile_nickname'],['group','profile_group'],['notes','notes']]);
+  const processorFields=new Set(processorArguments.keys());
   const columnHelp={
     login:'Username for the assigned retail account, if different from its email.',
     firstName:'The shipping recipient saved on this suite or address, unless edited in this profile.',
@@ -1924,13 +1926,14 @@
   window.visualViewport?.addEventListener('resize',scheduleSheetHeight);
   window.visualViewport?.addEventListener('scroll',scheduleSheetHeight);
   let cellAnchor=null,selectingCells=false;
-  let cellDrag=null,dragFrame=0;
+  let cellDrag=null,dragFrame=0,touchHold=null;
   const formatButton=get('ec-format-address');
   let formatButtonEligible=false,formatButtonFrame=0,formatPoint=null;
+  const canJigField=field=>processorFields.has(field)||profileFormatFields.has(field);
   function visibleFormatCell(input,bounds){
-    if(!input?.classList.contains('ec-selected-cell')||!profileFormatFields.has(input.dataset.field))return null;
+    if(!input?.classList.contains('ec-selected-cell')||!canJigField(input.dataset.field))return null;
     const rect=input.getBoundingClientRect();
-    const left=Math.max(rect.left,bounds.left),right=Math.min(rect.right,bounds.right);
+    const left=Math.max(rect.left,bounds.left,input.dataset.field==='nickname'?bounds.left:bounds.pinned),right=Math.min(rect.right,bounds.right);
     const top=Math.max(rect.top,bounds.top),bottom=Math.min(rect.bottom,bounds.bottom);
     return right-left>=8&&bottom-top>=8?{left,right,top,bottom}:null;
   }
@@ -1940,7 +1943,7 @@
     const box=sheetScroller.getBoundingClientRect();
     const pinned=sheetScroller.hasAttribute('data-wide-nickname')?box.left:sheetHeaders.firstElementChild?.getBoundingClientRect().right??box.left;
     const bounds={
-      left:Math.max(viewportLeft,box.left+sheetScroller.clientLeft,pinned),
+      left:Math.max(viewportLeft,box.left+sheetScroller.clientLeft),pinned,
       right:Math.min(viewportLeft+(viewport?.width??innerWidth),box.left+sheetScroller.clientLeft+sheetScroller.clientWidth),
       top:Math.max(viewportTop,box.top+sheetScroller.clientTop,sheetHeaders.getBoundingClientRect().bottom),
       bottom:Math.min(viewportTop+(viewport?.height??innerHeight),box.top+sheetScroller.clientTop+sheetScroller.clientHeight)
@@ -1980,9 +1983,8 @@
     const count=selectedCellCount,editing=!bulkValue.hidden;
     updateSheetHistoryControls();
     sheetScroller.toggleAttribute('data-picking-cells',selectingCells);
-    get('ec-select-cells').setAttribute('aria-pressed',String(selectingCells));
     get('ec-match-billing').hidden=!count||editing;
-    formatButtonEligible=!editing&&count>0&&[...selectedCells.values()].some(fields=>[...fields].some(field=>profileFormatFields.has(field)));
+    formatButtonEligible=!editing&&count>0&&[...selectedCells.values()].some(fields=>[...fields].some(canJigField));
     if(!formatButtonEligible)formatButton.hidden=true;
     scheduleFormatButton();
     get('ec-edit-cells').hidden=!count||!bulkValue.hidden||(!selectingCells&&count<2);
@@ -2008,7 +2010,7 @@
     paintSheetSelection();bulkValue.hidden=true;showSelection();
   }
   function resetSheetSelection(){
-    stopCellDrag();cellAnchor=null;formatPoint=null;selectingCells=false;setSheetSelection(new Map(),0);
+    cancelTouchHold();stopCellDrag();cellAnchor=null;formatPoint=null;selectingCells=false;setSheetSelection(new Map(),0);
   }
   function sheetPoint(td){
     const index=td?.parentElement?.dataset.sheetIndex;
@@ -2052,6 +2054,17 @@
     if(sheetScroller.hasPointerCapture(id))sheetScroller.releasePointerCapture(id);
     scheduleFormatButton();
   }
+  function cancelTouchHold(){
+    clearTimeout(touchHold?.timer);touchHold=null;
+  }
+  function startTouchHold(event,input){
+    cancelTouchHold();
+    touchHold={id:event.pointerId,x:event.clientX,y:event.clientY,timer:setTimeout(()=>{
+      touchHold=null;
+      if(!sheetBody.contains(input))return;
+      selectingCells=true;selectSingleCell(input);sheetScroller.focus({preventScroll:true});
+    },380)};
+  }
   function edgeStep(point,start,end){
     const band=Math.min(28,(end-start)/4);
     if(point<start+band)return -Math.min(22,Math.ceil((start+band-point)/2));
@@ -2081,6 +2094,7 @@
     const cell=event.target.closest('td');if(!cell||event.button!==0||!event.isPrimary)return;
     const point=sheetPoint(cell);if(!point)return;
     const input=cell.querySelector('input[data-row]');
+    if(input&&event.pointerType==='touch'&&!selectingCells)startTouchHold(event,input);
     if(!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&(event.pointerType!=='touch'||selectingCells)){
       stopCellDrag();cellDrag={id:event.pointerId,start:point,x:event.clientX,y:event.clientY,active:false};
     }
@@ -2091,6 +2105,7 @@
     sheetScroller.focus({preventScroll:true});
   });
   document.addEventListener('pointermove',event=>{
+    if(touchHold?.id===event.pointerId&&Math.hypot(event.clientX-touchHold.x,event.clientY-touchHold.y)>8)cancelTouchHold();
     const d=cellDrag;if(!d||d.id!==event.pointerId)return;
     if(!(event.buttons&1)){stopCellDrag();return;}
     if(!d.active){
@@ -2106,6 +2121,7 @@
     if(!dragFrame)dragFrame=requestAnimationFrame(paintDrag);
   });
   document.addEventListener('pointerup',event=>{
+    if(touchHold?.id===event.pointerId)cancelTouchHold();
     if(cellDrag?.id!==event.pointerId)return;
     if(cellDrag.active){
       cellDrag.x=event.clientX;cellDrag.y=event.clientY;
@@ -2113,20 +2129,23 @@
     }
     stopCellDrag();
   });
-  document.addEventListener('pointercancel',event=>{if(cellDrag?.id===event.pointerId)stopCellDrag();});
+  document.addEventListener('pointercancel',event=>{
+    if(touchHold?.id===event.pointerId)cancelTouchHold();
+    if(cellDrag?.id===event.pointerId)stopCellDrag();
+  });
   sheetScroller.addEventListener('lostpointercapture',event=>{
     if(event.target===sheetScroller&&cellDrag?.id===event.pointerId)stopCellDrag();
   });
   sheetBody.addEventListener('dragstart',event=>{if(cellDrag)event.preventDefault();});
-  window.addEventListener('blur',stopCellDrag);
+  window.addEventListener('blur',()=>{cancelTouchHold();stopCellDrag();});
   sheetBody.addEventListener('focusin',event=>{
     const input=event.target.closest('input[data-row]');
     if(input&&!selectedCells.get(input.dataset.row)?.has(input.dataset.field))selectSingleCell(input);
   });
-  get('ec-select-cells').addEventListener('click',()=>{
-    const enable=!selectingCells;
-    resetSheetSelection();selectingCells=enable;showSelection();
-    if(enable)sheetScroller.focus({preventScroll:true});
+  sheetBody.addEventListener('contextmenu',event=>{if(selectingCells)event.preventDefault();});
+  sheetBody.addEventListener('click',event=>{if(selectingCells)event.preventDefault();},true);
+  document.addEventListener('pointerdown',event=>{
+    if(selectingCells&&!event.target.closest('#ec-sheet-scroll,#ec-edit-tools,#ec-format-address,dialog'))resetSheetSelection();
   });
   function startBulk(value){
     if(!selectedCellCount)return;
@@ -2219,7 +2238,116 @@
     name:profileFormatGroups.name,phone:profileFormatGroups.phone
   };
   const formatDialog=get('ec-format-dialog'),formatPreview=get('ec-format-preview');
+  const formatStatus=get('ec-format-status'),formatApply=get('ec-format-apply');
+  const formatInputs=Object.entries(profileFormatOptions).map(([option,fields])=>({option,fields,input:get('ec-format-'+option)}));
+  const expressionRules=get('ec-expression-rules'),openProcessorSettings=get('ec-expression-open-settings');
+  const expressionList=get('ec-expression-list'),expressionName=get('ec-expression-name');
+  const expressionTemplate=get('ec-expression-template'),expressionStatus=get('ec-expression-status');
+  const expressionField=get('ec-expression-field'),expressionEnabled=get('ec-expression-enabled');
+  const expressionRemove=get('ec-expression-remove');
+  const processorInput=get('ec-processor-input'),processorOutput=get('ec-processor-output'),processorStatus=get('ec-processor-status');
+  const processorRun=get('ec-processor-run');
+  const expressionLimit=100;
+  let labelExpressions=[],expressionRemovalTimer=0;
+  let savedFormatModes=null,processorTest=null,formatRun=null;
+  let sendProcessorRequest=async()=>{throw Error('Open a saved workspace to run Python.');};
   let formatOwner=null,formatSelection=new Map();
+  const expressionTarget=rule=>rule?.field??'nickname';
+  const isExpressionEnabled=rule=>rule?.enabled!==false;
+  function cancelExpressionRemoval(){
+    clearTimeout(expressionRemovalTimer);expressionRemovalTimer=0;
+    expressionRemove.textContent='Remove rule';
+  }
+  function clearProcessorResult(){
+    processorTest?.abort();processorTest=null;processorRun.disabled=false;
+    processorOutput.value='';processorStatus.textContent='';
+  }
+  function cellResultMap(result,input,maxLength){
+    const remaining=new Set(input.map(cell=>cell.id));
+    if(!Array.isArray(result.cells)||result.cells.length!==input.length||
+      result.cells.some(cell=>!cell||typeof cell.value!=='string'||cell.value.length>maxLength||!remaining.delete(cell.id))){
+      throw Error('The response did not contain one value for each selected cell.');
+    }
+    return new Map(result.cells.map(cell=>[cell.id,cell.value]));
+  }
+  async function requestProcessorValues(rules,cells,request){
+    const response=await sendProcessorRequest({method:'POST',signal:request.signal,
+      body:JSON.stringify({rules,cells})});
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'Could not run the Python script.');
+    return cellResultMap(result,cells,8000);
+  }
+  async function runProcessor(){
+    clearProcessorResult();
+    if(!expressionTemplate.value.trim()){processorStatus.textContent='Enter a Python script first.';return;}
+    const request=new AbortController();processorTest=request;processorRun.disabled=true;
+    processorStatus.textContent='Running…';
+    try{
+      const result=await requestProcessorValues([{id:'draft',script:expressionTemplate.value}],
+        [{id:'1',field:'sample',value:processorInput.value,rules:['draft']}],request);
+      if(request.signal.aborted)return;
+      processorOutput.value=result.get('1');
+      processorStatus.textContent='Done.';
+    }catch(error){if(!request.signal.aborted)processorStatus.textContent=error.message;}
+    finally{if(processorTest===request){processorTest=null;processorRun.disabled=false;}}
+  }
+  function updateProcessorArgument(){
+    const argument=processorArguments.get(expressionField.value);
+    get('ec-expression-argument').textContent='def process('+argument+'):';
+    expressionTemplate.placeholder='def process('+argument+'):\n    return '+argument+'.strip()';
+  }
+  function editExpression(id){
+    const saved=labelExpressions.find(item=>item.id===id);
+    if(expressionTemplate.value!==(saved?.template||''))clearProcessorResult();
+    expressionList.value=saved?.id||'';
+    expressionName.value=saved?.name||'';
+    expressionTemplate.value=saved?.template||'';
+    expressionField.value=expressionTarget(saved);
+    expressionEnabled.checked=isExpressionEnabled(saved);
+    expressionStatus.textContent=saved&&saved.language!=='python'?'Replace the earlier expression with a Python function to use this rule.':'';
+    expressionRemove.hidden=!saved;
+    cancelExpressionRemoval();updateProcessorArgument();
+  }
+  function drawExpressionSettings(id=expressionList.value){
+    expressionList.replaceChildren(new Option('New rule',''),...labelExpressions.map(item=>new Option(item.name,item.id)));
+    editExpression(id);
+  }
+  function expressionSettingsDirty(){
+    if(get('ec-app-settings').hidden)return false;
+    const saved=labelExpressions.find(item=>item.id===expressionList.value);
+    return expressionName.value!==(saved?.name||'')||expressionTemplate.value!==(saved?.template||'')||
+      expressionField.value!==expressionTarget(saved)||expressionEnabled.checked!==isExpressionEnabled(saved);
+  }
+  processorRun.addEventListener('click',runProcessor);
+  processorInput.addEventListener('input',clearProcessorResult);
+  processorInput.addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.isComposing){event.preventDefault();runProcessor();}
+  });
+  expressionField.addEventListener('change',updateProcessorArgument);
+  expressionTemplate.addEventListener('input',clearProcessorResult);
+  expressionList.addEventListener('change',()=>editExpression(expressionList.value));
+  get('ec-expression-settings').addEventListener('submit',event=>{
+    event.preventDefault();
+    cancelExpressionRemoval();
+    const name=expressionName.value.trim(),template=expressionTemplate.value;
+    const id=expressionList.value;
+    if(!name||!template.trim()){expressionStatus.textContent='Enter a name and a Python script.';return;}
+    if(!id&&labelExpressions.length>=expressionLimit){expressionStatus.textContent='Remove a rule before adding another.';return;}
+    const saved={id:id||crypto.randomUUID(),name,template,language:'python',field:expressionField.value,enabled:expressionEnabled.checked};
+    labelExpressions=id?labelExpressions.map(item=>item.id===id?saved:item):[...labelExpressions,saved];
+    drawExpressionSettings(saved.id);
+    saveCoordinatorChange({immediate:true});
+  });
+  expressionRemove.addEventListener('click',()=>{
+    if(!expressionRemovalTimer){
+      expressionRemove.textContent='Confirm removal';
+      expressionRemovalTimer=setTimeout(cancelExpressionRemoval,2000);
+      return;
+    }
+    labelExpressions=labelExpressions.filter(item=>item.id!==expressionList.value);
+    drawExpressionSettings('');
+    saveCoordinatorChange({immediate:true});
+  });
   function postalWords(words){
     const spellings=new Map();
     for(const [long,short] of Object.entries(words)){
@@ -2273,9 +2401,9 @@
     return before;
   }
   function profileFormatPlan(){
-    const modes=Object.fromEntries(Object.keys(profileFormatOptions).map(option=>[option,get('ec-format-'+option).checked]));
+    const modes=Object.fromEntries(formatInputs.map(({option,input})=>[option,isFormatSwitchActive(input)]));
     const changes=new Map(),kept=new Set(),reserve=new Map();
-    if(currentList()!==formatOwner)return changes;
+    if(currentList()!==formatOwner||!Object.values(modes).some(Boolean))return changes;
     const shippingSelected=[...formatSelection.values()].some(fields=>shippingStreetFields.some(field=>fields.has(field)));
     for(const row of sheetRows){
       const key=sheetRowKey(row),edit={};
@@ -2325,8 +2453,8 @@
     for(const body of [...formatPreview.tBodies])body.remove();
     get('ec-format-results').hidden=true;
   }
-  function showProfileFormatPreview(){
-    const changes=profileFormatPlan(),fields=new Set();
+  function showProfileFormatPreview(changes){
+    const fields=new Set();
     let fieldCount=0;
     for(const {edit} of changes.values()){
       for(const field of Object.keys(edit)){fields.add(field);fieldCount++;}
@@ -2353,30 +2481,116 @@
     }
     if(shown)get('ec-format-results').hidden=false;
     const summary=changes.size?changes.size+(changes.size===1?' profile will change.':' profiles will change.'):'No changes for the selected cells.';
-    get('ec-format-status').textContent=summary+(fieldCount>shown?' Showing '+shown+' of '+fieldCount+' changed cells.':'');
-    get('ec-format-apply').disabled=!changes.size;
+    formatStatus.textContent=summary+(fieldCount>shown?' Showing '+shown+' of '+fieldCount+' changed cells.':'');
+    formatApply.disabled=!changes.size;
     positionProfileFormatDialog();
+  }
+  const isFormatSwitchActive=input=>input.checked&&!input.closest('label').hidden;
+  function drawProcessorRules(fields){
+    const matches=labelExpressions.filter(rule=>rule.language==='python'&&isExpressionEnabled(rule)&&fields.has(expressionTarget(rule)));
+    expressionRules.replaceChildren();
+    for(const rule of matches){
+      const label=document.createElement('label'),title=document.createElement('span'),column=document.createElement('small');
+      const input=document.createElement('input');
+      label.className='ec-format-toggle';title.textContent=rule.name;
+      column.textContent=fieldLabels.get(expressionTarget(rule));title.append(column);
+      input.type='checkbox';input.setAttribute('role','switch');input.value=rule.id;
+      label.append(title,input);expressionRules.append(label);
+    }
+    openProcessorSettings.hidden=matches.length>0;
+  }
+  function updateJigControls(){
+    if(formatRun)return;
+    if(!savedFormatModes){showProfileFormatPreview(profileFormatPlan());return;}
+    const anyRules=!!expressionRules.querySelector('input:checked')||formatInputs.some(({input})=>isFormatSwitchActive(input));
+    formatApply.disabled=!anyRules;
+    const hasChoices=expressionRules.childElementCount>0||!get('ec-format-options').hidden;
+    const instruction=hasChoices?'Turn on the rules you want to run.':'Add an enabled rule for this column in Settings.';
+    formatStatus.textContent=anyRules?'':instruction;
+    positionProfileFormatDialog();
+  }
+  async function addProcessorChanges(changes,request){
+    const ids=new Set([...expressionRules.querySelectorAll('input:checked')].map(input=>input.value));
+    if(!ids.size)return;
+    const byField=new Map(),rules=[],cells=[];
+    for(const rule of labelExpressions){
+      if(!ids.has(rule.id)||!isExpressionEnabled(rule)||rule.language!=='python')continue;
+      const field=expressionTarget(rule);
+      if(!processorFields.has(field))continue;
+      if(!byField.has(field))byField.set(field,[]);
+      byField.get(field).push(rule.id);
+      rules.push({id:rule.id,script:rule.template});
+    }
+    for(const row of sheetRows){
+      const key=sheetRowKey(row),fields=formatSelection.get(key);
+      if(!fields)continue;
+      for(const [field,ruleIds] of byField){
+        if(!fields.has(field))continue;
+        cells.push({id:String(cells.length+1),key,field,value:row[field]??'',rules:ruleIds});
+      }
+    }
+    if(!cells.length)return;
+    const result=await requestProcessorValues(rules,cells.map(({key,...cell})=>cell),request);
+    if(request.signal.aborted)return;
+    for(const {id,key,field,value} of cells){
+      const after=result.get(id),row=sheetRowsByKey.get(key);
+      if(!row||(row[field]??'')!==value)throw Error('A selected cell changed. Select the cells again.');
+      if(after===value)continue;
+      if(!changes.has(key))changes.set(key,{row,edit:{}});
+      changes.get(key).edit[field]=after;
+    }
   }
   formatButton.addEventListener('click',()=>{
     formatOwner=currentList();if(!formatOwner)return;
     formatSelection=new Map([...selectedCells].map(([key,fields])=>[key,new Set(fields)]));
     const fields=new Set([...formatSelection.values()].flatMap(selected=>[...selected]));
-    for(const [option,appliesTo] of Object.entries(profileFormatOptions)){
-      get('ec-format-'+option).closest('label').hidden=!appliesTo.some(field=>fields.has(field));
+    const hasProcessorFields=[...fields].some(field=>processorFields.has(field));
+    savedFormatModes=hasProcessorFields?formatInputs.map(({input})=>input.checked):null;
+    let hasFormatting=false;
+    for(const {fields:appliesTo,input} of formatInputs){
+      const matches=appliesTo.some(field=>fields.has(field));
+      input.closest('label').hidden=!matches;
+      if(matches)hasFormatting=true;
+      if(hasProcessorFields)input.checked=false;
     }
+    get('ec-format-title').textContent=hasProcessorFields?'Run rules':'Format selection';
+    get('ec-expression-controls').hidden=!hasProcessorFields;
+    get('ec-format-options').hidden=!hasFormatting;
     get('ec-format-preserve').hidden=!shippingStreetFields.some(field=>fields.has(field));
-    showProfileFormatPreview();
+    drawProcessorRules(hasProcessorFields?fields:new Set());
+    updateJigControls();
     formatDialog.showModal();
     positionProfileFormatDialog();
   });
-  for(const option of Object.keys(profileFormatOptions))get('ec-format-'+option).addEventListener('change',showProfileFormatPreview);
+  for(const {input} of formatInputs)input.addEventListener('change',updateJigControls);
+  expressionRules.addEventListener('change',updateJigControls);
+  openProcessorSettings.addEventListener('click',()=>{formatDialog.close();get('ec-show-settings').click();});
   get('ec-format-cancel').addEventListener('click',()=>formatDialog.close());
-  formatDialog.addEventListener('close',()=>{formatOwner=null;formatSelection.clear();clearProfileFormatPreview();});
-  get('ec-format-apply').addEventListener('click',()=>{
-    const list=formatOwner,changes=profileFormatPlan();
-    if(!changes.size){showProfileFormatPreview();return;}
+  formatDialog.addEventListener('close',()=>{
+    formatRun?.abort();formatRun=null;
+    if(savedFormatModes)formatInputs.forEach(({input},index)=>{input.checked=savedFormatModes[index];});
+    savedFormatModes=null;formatOwner=null;formatSelection.clear();clearProfileFormatPreview();
+  });
+  formatApply.addEventListener('click',async()=>{
+    const list=formatOwner;
+    if(formatApply.disabled||formatRun||currentList()!==list)return;
+    const changes=profileFormatPlan();
+    if(expressionRules.querySelector('input:checked')){
+      const request=new AbortController();formatRun=request;formatApply.disabled=true;
+      const switches=[...formatDialog.querySelectorAll('input[role=switch]')];
+      switches.forEach(input=>{input.disabled=true;});
+      formatStatus.textContent='Running Python…';
+      try{await addProcessorChanges(changes,request);}
+      catch(error){if(!request.signal.aborted)formatStatus.textContent=error.message;return;}
+      finally{
+        switches.forEach(input=>{input.disabled=false;});
+        if(formatRun===request){formatRun=null;formatApply.disabled=false;}
+      }
+      if(request.signal.aborted||currentList()!==list)return;
+    }
+    if(!changes.size){formatStatus.textContent='No changes for the selected cells.';return;}
     trackSheetEdit(list,[...changes.values()].map(({row})=>row.draftKey??row.accountId),()=>{
-      for(const {row,edit} of changes.values())applySheetEdits(list,row,edit);
+      for(const [key,{edit}] of changes)applySheetEdits(list,sheetRowsByKey.get(key),edit);
     });
     const selection=new Map(formatSelection),wasSelecting=selectingCells,point=formatPoint;
     formatDialog.close();
@@ -4565,6 +4779,7 @@ function cardEditorHasDraft(){
 }
 function canApplyRemoteView(){
   if(root.querySelector('dialog[open],.ec-strip-rename,.ec-group-rename,.ec-drop-ready')||armedChip||pendingDirectoryRemoval)return false;
+  if(expressionSettingsDirty())return false;
   const focus=document.activeElement;
   if(root.contains(focus)&&focus.matches('input:not([type=checkbox]):not([type=button]),textarea,select,[contenteditable=true]'))return false;
   if(get('ec-sources').hidden)return !cellDrag&&!selectingCells&&bulkValue.hidden;
@@ -4631,10 +4846,12 @@ function redrawSyncedWorkspace(){
     const refreshed=await privateHeaders();
     return refreshed['X-Chaos-CSRF']===previous?response:send(refreshed);
   }
+  sendProcessorRequest=options=>privateRequest('/api/event-coordinator/processor/run',options);
   function resetWorkspace(){
     resetAISettings();
     resetAiSheet();
     resetLiveSync();
+    labelExpressions=[];drawExpressionSettings('');clearProcessorResult();
     clearSharedNavigation();
     checkedCards.clear();cardNetworks.clear();cardsWithSecurityCode.clear();clearPrivateDirectory();cardScope=null;closeDirectoryRemoval();cardEditorOpen=false;
     accountGroups.length=0;removedAccountKeys.clear();checkedAccounts.clear();expandedAccountEmails.clear();accountScope={retailer:null,group:null};closeAccountEditor();
@@ -4811,7 +5028,9 @@ function mergeWorkspace(localBase, local, remoteBase, remote, choice=null) {
     return keys.length===Object.keys(b).length&&keys.every(key=>Object.hasOwn(b,key)&&equal(a[key],b[key]));
   }
   function upgrade(value){
-    if(!value||value.version!==1)return value||{};
+    if(!value)return {};
+    value={labelExpressions:[],...value};
+    if(value.version!==1)return value;
     const events=(value.events||[]).map(({sniped,shikari,...event})=>{
       const lists=[['sniped',sniped],['shikari',shikari]].map(([id,list])=>({
         basis:'person',...list,id,format:id,name:id==='sniped'?'Sniped':'Shikari'}));
@@ -4823,7 +5042,7 @@ function mergeWorkspace(localBase, local, remoteBase, remote, choice=null) {
   if(!remote&&!remoteBase)return {state:structuredClone(ours),conflicts:[]};
   const preferred=choice==='mine'?ours:saved;
   const identities={people:'Person',addresses:'Address',accounts:'Retail account',accountGroups:'Retail account group',
-    cards:'Card',groups:'Card group',events:'Event',lists:'Profile list',ledger:'Export entry',shippingVariants:'Shipping destination'};
+    cards:'Card',groups:'Card group',events:'Event',lists:'Profile list',ledger:'Export entry',shippingVariants:'Shipping destination',labelExpressions:'Processor rule'};
   const pairs=new Set(['accountKeys','sourceBaselines','names','edits']);
   const sets=new Set(['groupIds','disabledColumns','removedAccountKeys']);
   const allocation=['quantity','chosen','cards','cardGroupNames','useUngroupedCards','additionalCardLabels','accountGroupIds','pool','mode','basis','seed','retailer','rows','lastAssignments','nicknameCounters','names'];
@@ -5075,7 +5294,7 @@ function packList(list){
     accountEmailColumn:true,disabledColumns:[...list.disabledColumns],accountGroupIds:list.accountGroupIds??null,lastAssignments:list.lastAssignments||[],rows:list.rows.map(row=>[row.accountId,row.addressId,row.card])};
 }
 function snapshotState(){
-  return {version:2,people,addresses,accounts:masterAccounts.map(safeCopy),accountGroups,removedAccountKeys:[...removedAccountKeys],
+  return {version:2,people,addresses,accounts:masterAccounts.map(safeCopy),accountGroups,removedAccountKeys:[...removedAccountKeys],labelExpressions,
     cards:masterCards.map(label=>({label,id:cardIds.get(label),lastFour:cardLastFour.get(label)||'',network:cardNetworks.get(cardIds.get(label))||'',billing:cardBilling.get(cardIds.get(label))||null})),
     groups:cardGroups,events:events.map(event=>({id:event.id,name:event.name,sharing:event.sharing,selectedListId:sharedSelectedList(event),lists:event.lists.map(packList)})),
     selected:{event:sharedSelectedEvent()},serials:{sourceSerial,eventSerial,localAccountSerial,accountSerial,nextCardId},
@@ -5116,6 +5335,7 @@ function savedList(saved){
 }
 function unpackState(state){
   if(![1,2].includes(state.version)||!Array.isArray(state.events))throw Error('Unsupported saved workspace.');
+  labelExpressions=state.labelExpressions||[];drawExpressionSettings();
   rememberSharedNavigation(state);
   clearHierarchyUndo();
   accountGroups.length=0;for(const group of state.accountGroups||[])accountGroups.push(group);
@@ -5563,7 +5783,13 @@ for(const name of ['focusout','click','change','submit','keyup','close'])root.ad
 
   const keyPanel=get('ec-app-settings'),keyInput=get('ec-ai-key'),keySave=get('ec-ai-key-save');
 const keyRemove=get('ec-ai-key-remove'),keyStatus=get('ec-ai-key-status');
+const aiPreferences=get('ec-ai-preferences'),aiModel=get('ec-ai-model'),aiInitialPrompt=get('ec-ai-initial-prompt');
+const aiModelsRefresh=get('ec-ai-refresh-models'),aiModelStatus=get('ec-ai-model-status');
+const aiPreferencesSave=get('ec-ai-preferences-save'),aiPreferencesStatus=get('ec-ai-preferences-status');
+const aiSettingsPath='/api/event-coordinator/ai/';
 let keyConfigured=false,keyBusy=false,keyRequest=0,keyRemovalTimer=0;
+let savedAiModel='',savedAiPrompt='',aiPreferencesBusy=false;
+let aiModelIds=[],aiModelsLoaded=false,aiModelsRequest=null;
 
 function cancelKeyRemoval(){
   clearTimeout(keyRemovalTimer);keyRemovalTimer=0;keyRemove.textContent='Remove key';
@@ -5572,33 +5798,86 @@ function updateKeyControls(){
   get('ec-ai-key-badge').hidden=!keyConfigured;
   get('ec-ai-key-label').textContent=keyConfigured?'Replacement API key':'API key';
   keySave.textContent=keyConfigured?'Replace key':'Save key';
-  keySave.disabled=keyBusy||!keyInput.value.trim();
-  keyRemove.disabled=keyBusy;keyRemove.hidden=!keyConfigured;
+  keySave.disabled=keyBusy||aiPreferencesBusy||!keyInput.value.trim();
+  keyRemove.disabled=keyBusy||aiPreferencesBusy;keyRemove.hidden=!keyConfigured;
   keyInput.disabled=keyBusy;
+  aiPreferences.hidden=!keyConfigured;
+  aiModel.disabled=keyBusy||aiPreferencesBusy;
+  aiInitialPrompt.disabled=keyBusy||aiPreferencesBusy;
+  aiModelsRefresh.disabled=keyBusy||aiPreferencesBusy||!!aiModelsRequest;
+  aiPreferencesSave.disabled=keyBusy||aiPreferencesBusy||!aiPreferencesChanged();
+}
+function aiPreferencesChanged(){
+  return aiModel.value!==savedAiModel||aiInitialPrompt.value!==savedAiPrompt;
+}
+function renderAiModelOptions(selected){
+  const options=[new Option('Workspace default',''),...aiModelIds.map(id=>new Option(id,id))];
+  if(selected&&!aiModelIds.includes(selected)){
+    const suffix=aiModelsLoaded?' (unavailable)':'';
+    options.push(new Option(selected+suffix,selected));
+  }
+  aiModel.replaceChildren(...options);aiModel.value=selected;
+}
+function clearAiModels(){
+  aiModelsRequest?.abort();aiModelsRequest=null;aiModelsLoaded=false;aiModelIds=[];aiModelStatus.textContent='';
+}
+function applyAiSettings(result,replaceDraft=false){
+  const keepDraft=keyConfigured&&result.configured===true&&!replaceDraft&&aiPreferencesChanged();
+  keyConfigured=result.configured===true;
+  if(!keyConfigured)clearAiModels();
+  savedAiModel=typeof result.model==='string'?result.model:'';
+  savedAiPrompt=typeof result.initialPrompt==='string'?result.initialPrompt:'';
+  renderAiModelOptions(keepDraft?aiModel.value:savedAiModel);
+  if(!keepDraft)aiInitialPrompt.value=savedAiPrompt;
+  updateKeyControls();
 }
 function resetAISettings(){
-  keyRequest++;keyBusy=false;keyConfigured=false;keyInput.value='';keyStatus.textContent='';
-  cancelKeyRemoval();updateKeyControls();
+  keyRequest++;keyBusy=false;aiPreferencesBusy=false;keyInput.value='';keyStatus.textContent='';
+  aiPreferencesStatus.textContent='';
+  cancelKeyRemoval();applyAiSettings({configured:false},true);
 }
 function keyRequestMessage(status){
   if(status===401||status===403||status===409)return 'Reload the workspace to manage the API key.';
   if(status===400||status===422)return 'Check the API key and try again.';
   return 'Could not reach the key settings. Try again.';
 }
+function aiSettingsOptions(){
+  return {credentials:'same-origin',mode:'same-origin',redirect:'error',cache:'no-store',headers:{'X-Parcel-Workspace':scope||profileScope}};
+}
+async function readAiSettingsResponse(response){
+  const result=await response.json().catch(()=>null);
+  if(!response.ok||!result)throw requestError(response.status,typeof result?.detail==='string'?result.detail:'');
+  return result;
+}
+async function loadAiModels(refresh=false){
+  if(!active||keyPanel.hidden||!keyConfigured||keyBusy||aiPreferencesBusy||aiModelsRequest||(!refresh&&aiModelsLoaded))return;
+  const request=new AbortController();aiModelsRequest=request;
+  aiModelStatus.textContent='Loading models…';updateKeyControls();
+  try{
+    const response=await fetch(aiSettingsPath+'models',{...aiSettingsOptions(),signal:request.signal});
+    const result=await readAiSettingsResponse(response);
+    if(aiModelsRequest!==request)return;
+    if(!Array.isArray(result.models)||!result.models.every(id=>typeof id==='string'&&id))throw Error('OpenAI returned an invalid model list.');
+    aiModelIds=[...new Set(result.models)];aiModelsLoaded=true;
+    renderAiModelOptions(aiModel.value);
+    aiModelStatus.textContent=aiModelIds.length?'':'This key has no compatible editing models.';
+  }catch(error){
+    if(aiModelsRequest===request)aiModelStatus.textContent=error.message||'Could not load models. Refresh models to retry.';
+  }finally{
+    if(aiModelsRequest===request){aiModelsRequest=null;updateKeyControls();}
+  }
+}
 async function readKeyStatus(){
-  if(keyPanel.hidden||!active||keyBusy)return;
+  if(keyPanel.hidden||!active||keyBusy||aiPreferencesBusy)return;
   const token=++keyRequest;
   try{
-    const response=await fetch('/api/event-coordinator/ai/settings',{credentials:'same-origin',mode:'same-origin',redirect:'error',cache:'no-store',headers:{'X-Parcel-Workspace':scope||profileScope}});
-    if(!response.ok)throw requestError(response.status);
-    const result=await response.json();
+    const result=await readAiSettingsResponse(await fetch(aiSettingsPath+'settings',aiSettingsOptions()));
     if(token!==keyRequest)return;
-    keyConfigured=result.configured===true;keyStatus.textContent='';
-    updateKeyControls();
+    keyStatus.textContent='';applyAiSettings(result);loadAiModels();
   }catch(error){if(token===keyRequest)keyStatus.textContent=keyRequestMessage(error.status);}
 }
 async function changeKey(method){
-  if(!active||keyBusy||keyPanel.hidden)return;
+  if(!active||keyBusy||aiPreferencesBusy||keyPanel.hidden)return;
   const token=++keyRequest;
   const options={method};
   if(method==='PUT'){
@@ -5608,18 +5887,34 @@ async function changeKey(method){
   }
   cancelKeyRemoval();keyBusy=true;updateKeyControls();
   keyStatus.textContent=method==='PUT'?'Saving key…':'Removing key…';
+  let saved=false;
   try{
-    const response=await privateRequest('/api/event-coordinator/ai/settings',options);
-    if(!response.ok)throw requestError(response.status);
-    const result=await response.json();
+    const result=await readAiSettingsResponse(await privateRequest(aiSettingsPath+'settings',options));
     if(token!==keyRequest)return;
-    keyConfigured=result.configured===true;keyInput.value='';
+    clearAiModels();aiPreferencesStatus.textContent='';keyInput.value='';applyAiSettings(result);
     keyStatus.textContent=keyConfigured?'API key saved.':'API key removed.';
+    saved=true;
   }catch(error){if(token===keyRequest)keyStatus.textContent=keyRequestMessage(error.status);}
-  finally{if(token===keyRequest){keyBusy=false;updateKeyControls();}}
+  finally{if(token===keyRequest){keyBusy=false;updateKeyControls();if(saved)loadAiModels();}}
+}
+async function saveAiPreferences(){
+  if(!active||keyPanel.hidden||!keyConfigured||keyBusy||aiPreferencesBusy||!aiPreferencesChanged())return;
+  const token=++keyRequest;
+  const body=JSON.stringify({model:aiModel.value,initialPrompt:aiInitialPrompt.value});
+  aiPreferencesBusy=true;updateKeyControls();aiPreferencesStatus.textContent='Saving…';
+  try{
+    const result=await readAiSettingsResponse(await privateRequest(aiSettingsPath+'preferences',{method:'PUT',body}));
+    if(token!==keyRequest)return;
+    applyAiSettings(result,true);aiPreferencesStatus.textContent='Preferences saved.';
+  }catch(error){
+    if(token===keyRequest)aiPreferencesStatus.textContent=error.message||'Could not save preferences. Try again.';
+  }finally{if(token===keyRequest){aiPreferencesBusy=false;updateKeyControls();}}
 }
 get('ec-show-settings').hidden=false;
 get('ec-ai-key-form').addEventListener('submit',event=>{event.preventDefault();changeKey('PUT');});
+aiPreferences.addEventListener('submit',event=>{event.preventDefault();saveAiPreferences();});
+aiModelsRefresh.addEventListener('click',()=>loadAiModels(true));
+for(const [control,event] of [[aiModel,'change'],[aiInitialPrompt,'input']])control.addEventListener(event,()=>{aiPreferencesStatus.textContent='';updateKeyControls();});
 keyInput.addEventListener('input',()=>{cancelKeyRemoval();updateKeyControls();});
 keyRemove.addEventListener('click',()=>{
   if(keyRemovalTimer){changeKey('DELETE');return;}
@@ -5633,232 +5928,125 @@ root.addEventListener('ec:workspace-view',event=>{
 window.addEventListener('focus',readKeyStatus);
 window.addEventListener('pagehide',()=>{keyInput.value='';cancelKeyRemoval();updateKeyControls();});
 
-  // OpenAI describes edits using column IDs. Interpret and preview them against local rows.
-const aiDialog=get('ec-ai-dialog'),aiScope=get('ec-ai-scope'),aiInstruction=get('ec-ai-instruction');
-const aiPreview=get('ec-ai-preview'),aiApply=get('ec-ai-apply'),aiStatus=get('ec-ai-status');
-let aiList=null,aiPromptList='',aiSelection=new Map(),aiPlan=null,aiRequest=null;
-const aiChangesTable=get('ec-ai-changes');
-let aiRowsObserver=null;
-function clearAiPreview(){
-  aiPlan=null;aiApply.disabled=true;get('ec-ai-results').hidden=true;
-  aiRowsObserver?.disconnect();aiRowsObserver=null;
-  for(const body of Array.from(aiChangesTable.tBodies))body.remove();
-  get('ec-ai-settings').hidden=true;aiStatus.textContent='';
-}
-function updateAiPrompt(){
-  aiRequest?.abort();aiRequest=null;clearAiPreview();
-  aiPreview.disabled=!aiInstruction.value.trim()||!sheetRowsByKey.size||!aiColumns().length;
-}
-function resetAiSheet(){
-  aiRequest?.abort();aiRequest=null;aiList=null;aiPromptList='';aiSelection.clear();
-  aiInstruction.value='';clearAiPreview();
-  if(aiDialog.open)aiDialog.close();
-}
-function aiColumns(){
-  const selected=new Set([...aiSelection.values()].flatMap(fields=>[...fields]));
-  return visibleColumns.map(([field])=>field).filter(field=>editableFields.has(field)&&!flagFields.has(field)
-    &&(aiScope.value!=='cells'||selected.has(field)));
-}
-get('ec-ai-edit').hidden=false;
-get('ec-ai-edit').addEventListener('click',()=>{
-  aiList=currentList();if(!active||!aiList)return;
-  const key=JSON.stringify([profileScope,activeEvent,aiList.id]);
-  if(aiPromptList!==key)aiInstruction.value='';
-  aiPromptList=key;aiSelection.clear();
-  let count=0;
-  for(const [row,fields] of selectedCells){
-    if(!sheetRowsByKey.has(row))continue;
-    const textFields=new Set([...fields].filter(field=>editableFields.has(field)&&!flagFields.has(field)));
-    if(textFields.size){aiSelection.set(row,textFields);count+=textFields.size;}
-  }
-  aiScope.replaceChildren();
-  if(selectedCells.size)aiScope.add(new Option('Selected cells ('+count+' editable text '+(count===1?'cell':'cells')+')','cells'));
-  aiScope.add(new Option('All profiles in this list ('+sheetRowsByKey.size+')','list'));
-  updateAiPrompt();
-  if(!sheetRowsByKey.size)aiStatus.textContent='Add profiles to this list to start editing.';
-  else if(!aiColumns().length)aiStatus.textContent='Select an editable text cell or choose all profiles.';
-  aiDialog.showModal();aiInstruction.focus();
-});
-aiScope.addEventListener('change',updateAiPrompt);
-aiInstruction.addEventListener('input',updateAiPrompt);
-get('ec-ai-close').addEventListener('click',()=>aiDialog.close());
-aiDialog.addEventListener('close',()=>{
-  aiRequest?.abort();aiRequest=null;aiSelection.clear();aiList=null;clearAiPreview();
-});
-get('ec-ai-settings').addEventListener('click',()=>{aiDialog.close();get('ec-show-settings').click();});
+  const aiDialog=get('ec-ai-dialog'),aiInstruction=get('ec-ai-instruction');
+  const aiRun=get('ec-ai-run'),aiStatus=get('ec-ai-status'),aiSettings=get('ec-ai-settings');
+  const aiScope=get('ec-ai-scope'),aiColumns=get('ec-ai-columns');
+  const aiCellLimit=1500,aiValueLimit=8000,aiSelectionLimit=128*1024;
+  let aiList=null,aiPromptList='',aiCells=[],aiRequest=null;
 
-const aiOperations=new Set(['set','prefix','suffix','replace','trim','uppercase','lowercase','titlecase','extract_email','copy','prefix_letters']);
-// Match the coordinator's 12 MiB save limit. Check expanding replacements before allocating them.
-const aiSizeLimit=12*1024*1024;
-function aiSizeError(){return Error('This instruction would exceed the workspace size limit. Use a shorter replacement or select fewer cells.');}
-function validateAiSteps(steps,fields){
-  if(!Array.isArray(steps)||steps.length>12||steps.some(step=>!step||!fields.includes(step.field)||!aiOperations.has(step.op)
-      ||typeof step.value!=='string'||step.value.length>500||typeof step.find!=='string'||step.find.length>500
-      ||step.op==='copy'&&!fields.includes(step.value)||step.op==='replace'&&!step.find
-      ||step.op==='prefix_letters'&&!/^[1-8]$/.test(step.value)))throw Error('The suggested edit could not be applied to these columns. Try a more specific instruction.');
-}
-function aiValue(step,row){
-  const current=String(row[step.field]??'');
-  switch(step.op){
-    case 'set':return step.value;
-    case 'prefix':return step.value+current;
-    case 'suffix':return current+step.value;
-    case 'replace':{
-      const growth=step.value.length-step.find.length;
-      if(growth>0){
-        let size=current.length,start=0;
-        while((start=current.indexOf(step.find,start))!==-1){
-          size+=growth;
-          if(size>aiSizeLimit)throw aiSizeError();
-          start+=step.find.length;
-        }
+  function resetAiSheet(){
+    aiRequest?.abort();aiRequest=null;aiList=null;aiPromptList='';aiCells=[];
+    aiInstruction.value='';aiInstruction.disabled=false;aiRun.disabled=true;aiStatus.textContent='';aiSettings.hidden=true;
+    if(aiDialog.open)aiDialog.close();
+  }
+  function selectedAiCells(){
+    const cells=[];
+    const allFields=aiScope.value==='list'?[...aiColumns.querySelectorAll('input:checked')].map(input=>input.value):null;
+    for(const row of sheetRows){
+      const rowKey=sheetRowKey(row);
+      for(const field of allFields??selectedCells.get(rowKey)??[]){
+        if(!processorFields.has(field))continue;
+        cells.push({id:String(cells.length+1),rowKey,field,value:String(row[field]??'')});
       }
-      return current.replaceAll(step.find,()=>step.value);
     }
-    case 'trim':return current.trim();
-    case 'uppercase':return current.toUpperCase();
-    case 'lowercase':return current.toLowerCase();
-    case 'titlecase':return current.toLowerCase().replace(/\p{L}[\p{L}\p{M}]*/gu,word=>word[0].toUpperCase()+word.slice(1));
-    case 'extract_email':{
-      for(const domain of current.matchAll(/@[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi)){
-        const local=current.slice(Math.max(0,domain.index-64),domain.index).match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i);
-        if(local)return local[0]+domain[0];
-      }
-      return current;
+    return cells;
+  }
+  function updateAiScope(){
+    aiColumns.hidden=aiScope.value!=='list';
+    aiCells=selectedAiCells();
+    const count=aiCells.length;
+    const cellLimitExceeded=aiCells.some(cell=>cell.value.length>aiValueLimit);
+    const selectionTooLarge=count>aiCellLimit||new TextEncoder().encode(aiCells.map(cell=>cell.value).join('')).length>aiSelectionLimit;
+    const emptyScope=aiColumns.hidden?'Select Profile nickname, Profile group, or Notes cells to run an AI edit.':'Choose which columns to send.';
+    get('ec-ai-count').textContent=count?count+' '+(count===1?'cell':'cells')+' for AI editing.':emptyScope;
+    aiStatus.textContent='';
+    if(cellLimitExceeded)aiStatus.textContent='Each value can have up to '+aiValueLimit+' characters.';
+    else if(selectionTooLarge)aiStatus.textContent='Choose up to '+aiCellLimit+' cells totaling up to 128 KB.';
+    aiSettings.hidden=true;aiRun.disabled=!count||cellLimitExceeded||selectionTooLarge;
+  }
+  function setAiRunning(running){
+    aiScope.disabled=running;aiColumns.disabled=running;aiInstruction.disabled=running;
+    if(running)aiRun.disabled=true;
+  }
+  aiScope.addEventListener('change',updateAiScope);
+  aiColumns.addEventListener('change',updateAiScope);
+  const aiEdit=get('ec-ai-edit');aiEdit.hidden=false;
+  aiEdit.addEventListener('click',()=>{
+    aiList=currentList();if(!active||!aiList)return;
+    const key=JSON.stringify([profileScope,activeEvent,aiList.id]);
+    if(aiPromptList!==key)aiInstruction.value='';
+    aiPromptList=key;aiScope.value='cells';
+    const selectedFields=new Set([...selectedCells.values()].flatMap(fields=>[...fields]));
+    for(const input of aiColumns.querySelectorAll('input'))input.checked=selectedFields.has(input.value);
+    updateAiScope();
+    aiDialog.showModal();aiInstruction.focus();
+  });
+  get('ec-ai-close').addEventListener('click',()=>aiDialog.close());
+  aiDialog.addEventListener('close',()=>{
+    aiRequest?.abort();aiRequest=null;aiList=null;aiCells=[];
+    aiRun.disabled=true;setAiRunning(false);aiSettings.hidden=true;aiStatus.textContent='';
+  });
+  aiSettings.addEventListener('click',()=>{aiDialog.close();get('ec-show-settings').click();});
+
+  async function requireAiRevision(expected,request){
+    const response=await fetch('/api/event-coordinator/revision',{credentials:'same-origin',mode:'same-origin',redirect:'error',cache:'no-store',
+      signal:request.signal,headers:{'X-Parcel-Workspace':profileScope}});
+    if(!response.ok)throw Error('Could not check the current sheet. Reconnect, then try again.');
+    const info=await response.json();
+    if(info.profileId!==profileScope||!Number.isSafeInteger(info.revision))throw Error('Reload Event Manager for the current workspace.');
+    signalNewerRevision(info.revision);
+    if(!active||conflicted||info.revision!==expected||revision!==expected||newestRevision>expected||currentList()!==aiList){
+      throw Error('The sheet changed. Close this dialog to sync, then run the edit again.');
     }
-    case 'copy':return String(row[step.value]??'');
-    case 'prefix_letters':{
-      const bytes=crypto.getRandomValues(new Uint8Array(Number(step.value)));
-      return Array.from(bytes,value=>String.fromCharCode(65+value%26)).join('')+' '+current;
-    }
   }
-}
-function buildAiPreview(steps){
-  const simulated={edits:new Map(aiList.edits)},changes=[],overrides=new Map();
-  let storedCharacters=0;
-  const columns=visibleColumns.filter(([field])=>editableFields.has(field)&&!flagFields.has(field));
-  for(const [id,row] of sheetRowsByKey){
-    const selected=aiSelection.get(id);
-    if(aiScope.value==='cells'&&!selected)continue;
-    const key=row.draftKey??row.accountId,copy={...row};
-    if(key==null)continue;
-    for(const step of steps){
-      if(aiScope.value==='cells'&&!selected.has(step.field))continue;
-      const value=aiValue(step,copy);
-      if(value.length>aiSizeLimit)throw aiSizeError();
-      if(String(copy[step.field]??'')!==value)applySheetEdits(simulated,copy,{[step.field]:value});
-    }
-    const diffs=columns.filter(([field])=>String(row[field]??'')!==String(copy[field]??''));
-    if(!diffs.length)continue;
-    const edited=simulated.edits.get(key);
-    for(const field of Object.keys(edited))if(typeof edited[field]==='string')storedCharacters+=edited[field].length;
-    if(storedCharacters>aiSizeLimit)throw aiSizeError();
-    overrides.set(key,edited);
-    for(const [field,label] of diffs)changes.push([row.nickname,label,String(row[field]??''),String(copy[field]??'')]);
-  }
-  return {overrides,changes};
-}
-function drawAiPreview(changes){
-  const panel=get('ec-ai-results'),blockSize=40;
-  panel.hidden=!changes.length;panel.scrollTop=0;
-  const windowed=changes.length>2*blockSize&&typeof IntersectionObserver==='function';
-  aiChangesTable.toggleAttribute('data-windowed',windowed);
-  aiChangesTable.setAttribute('aria-rowcount',String(changes.length+1));
-  function showRows(body){
-    const start=Number(body.dataset.start),rows=document.createDocumentFragment();
-    for(let index=start;index<Math.min(start+blockSize,changes.length);index++){
-      const tr=document.createElement('tr');
-      tr.setAttribute('aria-rowindex',String(index+2));
-      for(const value of changes[index]){const td=tr.insertCell();td.textContent=value||'—';}
-      rows.append(tr);
-    }
-    body.replaceChildren(rows);
-  }
-  function reserveHeight(body,height){
-    const space=document.createElement('tr');space.className='ec-ai-spacer';space.setAttribute('aria-hidden','true');
-    const td=space.insertCell();td.colSpan=4;td.style.height=Math.ceil(height)+'px';
-    body.replaceChildren(space);
-  }
-  if(windowed){
-    aiRowsObserver=new IntersectionObserver((entries,observer)=>{
-      if(observer!==aiRowsObserver)return;
-      for(const entry of entries){
-        const body=entry.target,spacer=body.firstElementChild.classList.contains('ec-ai-spacer');
-        if(entry.isIntersecting&&spacer)showRows(body);
-        else if(!entry.isIntersecting&&!spacer)reserveHeight(body,entry.boundingClientRect.height);
-      }
-    },{root:panel,rootMargin:'240px 0px'});
-  }
-  for(let start=0;start<changes.length;start+=blockSize){
-    const body=aiChangesTable.createTBody();body.dataset.start=String(start);
-    if(!windowed||start===0)showRows(body);
-    else reserveHeight(body,Math.min(blockSize,changes.length-start)*32);
-    aiRowsObserver?.observe(body);
-  }
-}
-async function requireAiRevision(expected,request){
-  const response=await fetch('/api/event-coordinator/revision',{credentials:'same-origin',mode:'same-origin',redirect:'error',cache:'no-store',
-    signal:request.signal,headers:{'X-Parcel-Workspace':profileScope}});
-  if(!response.ok)throw Error('Could not check the current sheet. Reconnect, then try again.');
-  const info=await response.json();
-  if(info.profileId!==profileScope||!Number.isSafeInteger(info.revision))throw Error('Reload Event Manager for the current workspace.');
-  signalNewerRevision(info.revision);
-  if(!active||conflicted||info.revision!==expected||revision!==expected||newestRevision>expected||currentList()!==aiList){
-    throw Error('The sheet changed. Close this dialog to sync, then preview the edit again.');
-  }
-}
-aiPreview.addEventListener('click',async()=>{
-  const instruction=aiInstruction.value.trim(),fields=aiColumns();
-  if(!instruction||!fields.length||!aiList||aiRequest)return;
-  clearAiPreview();aiPreview.disabled=true;aiStatus.textContent='Preparing preview…';
-  const request=new AbortController();aiRequest=request;
-  try{
-    await flushPersistence();
-    if(request.signal.aborted)return;
-    const expected=revision;
-    await requireAiRevision(expected,request);
-    const response=await privateRequest('/api/event-coordinator/ai/plan',{method:'POST',signal:request.signal,
-      body:JSON.stringify({instruction,fields})});
-    const plan=await response.json().catch(()=>({}));
-    if(request.signal.aborted)return;
+  async function requestAiValues(cells,instruction,request){
+    const input=cells.map(({id,field,value})=>({id,field,value}));
+    const response=await privateRequest('/api/event-coordinator/ai/process',{method:'POST',signal:request.signal,
+      body:JSON.stringify({instruction,cells:input})});
+    const result=await response.json().catch(()=>({}));
     if(!response.ok){
-      get('ec-ai-settings').hidden=response.status!==409&&!(typeof plan.detail==='string'&&plan.detail.includes('Settings'));
-      throw Error(typeof plan.detail==='string'?plan.detail:'Could not prepare the edit. Try again.');
+      aiSettings.hidden=response.status!==409&&!(typeof result.detail==='string'&&result.detail.includes('Settings'));
+      throw Error(typeof result.detail==='string'?result.detail:'Could not run the edit. Try again.');
     }
-    await requireAiRevision(expected,request);
-    if(request.signal.aborted)return;
-    validateAiSteps(plan.operations,fields);
-    const {changes,overrides}=buildAiPreview(plan.operations);
-    drawAiPreview(changes);
-    aiStatus.textContent=(plan.message?plan.message+' ':'')+(changes.length?changes.length+' changed '+(changes.length===1?'cell':'cells')+' across '+overrides.size+' '+(overrides.size===1?'profile.':'profiles.'):'No cells would change.');
-    if(changes.length){
-      aiPlan={revision:expected,overrides,state:JSON.stringify(snapshotState())};aiApply.disabled=false;
-    }
-  }catch(error){
-    if(!request.signal.aborted)aiStatus.textContent=error instanceof TypeError?'Could not reach Event Coordinator. Reconnect, then try again.':error.message;
-  }finally{
-    if(aiRequest===request){aiRequest=null;aiPreview.disabled=false;}
+    return cellResultMap(result,input,aiValueLimit);
   }
-});
-aiApply.addEventListener('click',async()=>{
-  const plan=aiPlan;
-  if(!plan||aiRequest)return;
-  const request=new AbortController();aiRequest=request;aiApply.disabled=true;aiPreview.disabled=true;
-  try{
-    await requireAiRevision(plan.revision,request);
-    if(request.signal.aborted)return;
-    if(plan.state!==JSON.stringify(snapshotState()))throw Error('The sheet changed. Preview the edit again.');
-    const list=aiList;
-    trackSheetEdit(list,plan.overrides.keys(),()=>{
-      for(const [key,overrides] of plan.overrides)setSheetOverrides(list,key,overrides);
+  function applyAiCells(list,cells,output){
+    const changes=new Map();
+    for(const {id,rowKey,field,value} of cells){
+      const row=sheetRowsByKey.get(rowKey),after=output.get(id);
+      if(!row||String(row[field]??'')!==value)throw Error('A selected cell changed. Close this dialog and select the cells again.');
+      if(after===value)continue;
+      if(!changes.has(rowKey))changes.set(rowKey,{row,edit:{}});
+      changes.get(rowKey).edit[field]=after;
+    }
+    if(!changes.size){aiStatus.textContent='No cells changed.';return;}
+    trackSheetEdit(list,[...changes.values()].map(({row})=>row.draftKey??row.accountId),()=>{
+      for(const {row,edit} of changes.values())applySheetEdits(list,row,edit);
     });
+    const count=[...changes.values()].reduce((total,{edit})=>total+Object.keys(edit).length,0);
     aiDialog.close();redrawSheetEdits(list);
-  }catch(error){
-    if(!request.signal.aborted){clearAiPreview();aiStatus.textContent=error instanceof TypeError?'Could not check the sheet. Reconnect, then preview again.':error.message;}
-  }finally{
-    if(aiRequest===request){aiRequest=null;aiPreview.disabled=false;}
+    get('ec-status').textContent='Updated '+count+' '+(count===1?'cell.':'cells.');
   }
-});
+  aiRun.addEventListener('click',async()=>{
+    if(aiRun.disabled||!aiList||aiRequest)return;
+    const instruction=aiInstruction.value.trim(),cells=aiCells,list=aiList;
+    const request=new AbortController();aiRequest=request;
+    setAiRunning(true);aiSettings.hidden=true;aiStatus.textContent='Checking cells…';
+    try{
+      await flushPersistence();
+      if(request.signal.aborted)return;
+      const expected=revision;
+      await requireAiRevision(expected,request);
+      aiStatus.textContent='Processing '+cells.length+' '+(cells.length===1?'cell':'cells')+'…';
+      const output=await requestAiValues(cells,instruction,request);
+      await requireAiRevision(expected,request);
+      if(!request.signal.aborted)applyAiCells(list,cells,output);
+    }catch(error){
+      if(!request.signal.aborted)aiStatus.textContent=error instanceof TypeError?'Could not reach Event Coordinator. Reconnect, then try again.':error.message;
+    }finally{
+      if(aiRequest===request){aiRequest=null;aiRun.disabled=false;setAiRunning(false);}
+    }
+  });
 
 const exportTarget = get('ec-export-target');
 const canPickDirectory = typeof window.showDirectoryPicker === 'function';

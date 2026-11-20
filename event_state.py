@@ -14,7 +14,8 @@ KEY_FILE = 'event-coordinator.key'
 CARD_FIELDS = {'number', 'month', 'year', 'cvv', 'holder', 'brand', 'paymentType', 'firstName', 'lastName',
                'street', 'street2', 'city', 'state', 'zip', 'country'}
 STATE_FIELDS = {'version', 'people', 'addresses', 'accounts', 'cards', 'groups', 'events', 'selected',
-                'serials', 'accountKeys', 'sourceBaselines', 'ledger', 'accountGroups', 'removedAccountKeys'}
+                'serials', 'accountKeys', 'sourceBaselines', 'ledger', 'accountGroups', 'removedAccountKeys',
+                'labelExpressions'}
 BLOCKED = {'cvv', 'cvv2', 'cvc', 'cvc2', 'ccv', 'csc', 'cid', 'securitycode', 'cardsecuritycode',
            'cccvv', 'cccvc', 'cardcvv', 'cardcvc', 'paymentsecuritycode', 'cardverificationcode',
            'cardverificationvalue', 'password', 'pan', 'cardnumber', 'number', 'proto', 'constructor', 'prototype'}
@@ -23,6 +24,30 @@ LIMIT = 12 * 1024 * 1024
 
 def reject():
     raise HTTPException(400, 'Invalid coordinator data.')
+
+
+def valid_label_expressions(expressions):
+    if not isinstance(expressions, list) or len(expressions) > 100:
+        return False
+    ids = set()
+    for item in expressions:
+        if (not isinstance(item, dict) or not {'id', 'name', 'template'} <= item.keys()
+                or item.keys() - {'id', 'name', 'template', 'field', 'enabled', 'language'}):
+            return False
+        if not all(isinstance(item[key], str) and item[key].strip() for key in ('id', 'name', 'template')):
+            return False
+        if item.get('field', 'nickname') not in ('nickname', 'group', 'notes') or type(item.get('enabled', True)) is not bool:
+            return False
+        key = item['id']
+        if not re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', key) or key in ids:
+            return False
+        if 'language' in item and item['language'] != 'python':
+            return False
+        script_limit = 16000 if item.get('language') == 'python' else 400
+        if len(item['name']) > 80 or len(item['template']) > script_limit:
+            return False
+        ids.add(key)
+    return True
 
 
 def inspect_tree(value, depth=0):
@@ -208,7 +233,8 @@ def save_box(resources, revision, state, changes):
         if not isinstance(removed, list) or any(not isinstance(key, str) for key in removed):
             reject()
         inspect_tree(state)
-        if not valid_layout(state) or not isinstance(changes, dict) or set(changes)-{'cards', 'passwords'}:
+        if (not valid_layout(state) or not valid_label_expressions(state.get('labelExpressions', []))
+                or not isinstance(changes, dict) or set(changes)-{'cards', 'passwords'}):
             reject()
         if not all(isinstance(row, dict) and isinstance(row.get('id'), int) for row in state['accounts']):
             reject()
@@ -286,7 +312,9 @@ def install(app, pinned):
     listeners = {}
 
     from event_ai import install as install_ai
+    from processor_runner import install_processor
     install_ai(app, pinned)
+    install_processor(app, pinned)
 
     @app.get('/api/event-coordinator/revision')
     def current_revision(request: Request):
