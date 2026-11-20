@@ -44,7 +44,7 @@
       <div id="ec-export-target"></div><p id="ec-export-help" class="ec-source-note"></p><div id="ec-export-issue" role="status"></div><div id="ec-export-codes"></div>
       <div class="ec-source-actions"><button type="button" id="ec-download-export" class="ec-primary cursor-interaction">Export CSV</button><button type="button" id="ec-close-export" class="cursor-interaction">Cancel</button></div>
     </dialog>
-    <div class="ec-edit-tools" id="ec-edit-tools"><button type="button" id="ec-select-cells" aria-pressed="false" title="Tap cells or drag to select a range">Select cells</button><button type="button" id="ec-sheet-undo" disabled title="Undo the last sheet edit in this list">Undo</button><button type="button" id="ec-sheet-redo" disabled title="Redo the last undone sheet edit">Redo</button><button type="button" id="ec-ai-edit" aria-haspopup="dialog" hidden>Edit with AI</button><button type="button" id="ec-sheet-defaults" disabled aria-haspopup="dialog">Restore to default…</button><span id="ec-selection-info" role="status"></span><button type="button" id="ec-edit-cells" hidden>Edit selected cells</button><input id="ec-cell-value" type="text" aria-label="Value for selected cells" autocomplete="off" hidden><button type="button" id="ec-apply-cells" hidden>Apply</button><button type="button" id="ec-cancel-cells" hidden>Cancel</button><button type="button" id="ec-match-billing" hidden>Match billing to shipping</button></div>
+    <div class="ec-edit-tools" id="ec-edit-tools"><button type="button" id="ec-select-cells" aria-pressed="false" title="Tap cells or drag to select a range">Select cells</button><button type="button" id="ec-sheet-undo" disabled title="Undo the last sheet edit in this list">Undo</button><button type="button" id="ec-sheet-redo" disabled title="Redo the last undone sheet edit">Redo</button><button type="button" id="ec-format-address" aria-haspopup="dialog" hidden>Jig</button><button type="button" id="ec-ai-edit" aria-haspopup="dialog" hidden>Edit with AI</button><button type="button" id="ec-sheet-defaults" disabled aria-haspopup="dialog">Restore to default…</button><span id="ec-selection-info" role="status"></span><button type="button" id="ec-edit-cells" hidden>Edit selected cells</button><input id="ec-cell-value" type="text" aria-label="Value for selected cells" autocomplete="off" hidden><button type="button" id="ec-apply-cells" hidden>Apply</button><button type="button" id="ec-cancel-cells" hidden>Cancel</button><button type="button" id="ec-match-billing" hidden>Match billing to shipping</button></div>
     <dialog id="ec-ai-dialog" aria-labelledby="ec-ai-title" class="ec-private-transient">
       <h2 id="ec-ai-title">Edit with AI</h2>
       <label>Apply to<select id="ec-ai-scope"></select></label>
@@ -53,6 +53,27 @@
       <p id="ec-ai-status" role="status" aria-live="polite"></p>
       <div id="ec-ai-results" hidden><table id="ec-ai-changes" aria-label="Preview of profile edits"><thead><tr><th>Profile</th><th>Column</th><th>Before</th><th>After</th></tr></thead></table></div>
       <footer class="ec-source-actions"><button type="button" id="ec-ai-close">Close</button><button type="button" id="ec-ai-settings" hidden>Open Settings</button><button type="button" id="ec-ai-preview">Preview changes</button><button type="button" id="ec-ai-apply" class="ec-primary" disabled>Apply changes</button></footer>
+    </dialog>
+    <dialog id="ec-format-dialog" aria-labelledby="ec-format-title">
+      <h2 id="ec-format-title">Format selected cells</h2>
+      <fieldset id="ec-format-street-options">
+        <legend>Street addresses</legend>
+        <p class="ec-source-note">One profile keeps the original shipping street lines for each saved destination.</p>
+        <label>Directions<select id="ec-format-direction"><option value="">As entered</option><option value="short" selected>Abbreviate</option><option value="long">Spell out</option></select></label>
+        <label>Street types<select id="ec-format-suffix"><option value="">As entered</option><option value="short" selected>Abbreviate</option><option value="long">Spell out</option></select></label>
+        <label>Apartment and suite labels<select id="ec-format-unit"><option value="" selected>As entered</option><option value="short">Abbreviate</option><option value="long">Spell out</option></select></label>
+      </fieldset>
+      <fieldset id="ec-format-name-options">
+        <legend>Names</legend>
+        <label>Format<select id="ec-format-name"><option value="">As entered</option><option value="trim">Remove extra spaces</option><option value="upper">Uppercase</option></select></label>
+      </fieldset>
+      <fieldset id="ec-format-phone-options">
+        <legend>U.S. phone numbers</legend>
+        <label>Format<select id="ec-format-phone"><option value="">As entered</option><option value="digits">Digits only</option><option value="national">(202) 555-0100</option></select></label>
+      </fieldset>
+      <p id="ec-format-status" class="ec-source-note" role="status"></p>
+      <ul id="ec-format-preview" aria-label="Before and after values" hidden></ul>
+      <div class="ec-source-actions"><button type="button" id="ec-format-cancel">Cancel</button><button type="button" id="ec-format-apply" class="ec-primary" disabled>Apply changes</button></div>
     </dialog>
     <dialog id="ec-defaults-dialog" aria-labelledby="ec-defaults-title">
       <h2 id="ec-defaults-title">Restore to default</h2>
@@ -98,11 +119,6 @@
       <div class="ec-record-layout">
         <aside class="ec-record-tree"><strong>Retailers &amp; groups</strong><div id="ec-inv-account-tree" aria-label="Retailers and account groups"></div>
           <form id="ec-inv-group-form"><label><span id="ec-inv-group-context">New group</span><input id="ec-inv-account-group-name" maxlength="100" placeholder="Group name" required></label><button>Create group</button></form>
-          <details id="ec-inv-edit-group" hidden><summary>Edit group</summary>
-            <form id="ec-inv-rename-group"><label>Group name<input id="ec-inv-group-edit-name" maxlength="100" required></label><button>Rename group</button></form>
-            <button type="button" id="ec-inv-delete-group">Delete group…</button>
-            <div id="ec-inv-group-confirm" hidden><p>Remove this group and keep its accounts?</p><button type="button" id="ec-inv-keep-group">Cancel</button><button type="button" id="ec-inv-confirm-group">Confirm removal</button></div>
-          </details>
         </aside>
         <div class="ec-record-main">
           <div class="ec-record-tools"><label>Retailer for import or new account<select id="ec-inv-retailer"></select></label><label>Find accounts<input id="ec-inv-search" type="search" placeholder="Email or username"></label></div>
@@ -113,7 +129,7 @@
             <button type="button" id="ec-inv-delete-accounts">Delete selected</button>
           </div>
           <div class="ec-record-tools" id="ec-inv-delete-confirm" hidden><span id="ec-inv-delete-note"></span><button type="button" id="ec-inv-delete-cancel">Cancel</button><button type="button" id="ec-inv-delete-apply">Confirm deletion</button></div>
-          <div class="ec-record-scroll"><table class="ec-record-table" aria-label="Retail account directory"><thead><tr><th><input type="checkbox" id="ec-inv-check-all" aria-label="Select all visible accounts"></th><th><button type="button" data-account-sort="email">Email</button></th><th><button type="button" data-account-sort="retailer">Retailers</button></th><th><button type="button" data-account-sort="username">Username</button></th><th>Password</th><th>Groups</th></tr></thead><tbody id="ec-inv-account-list"></tbody></table></div>
+          <div class="ec-record-scroll"><table class="ec-record-table" aria-label="Retail account directory"><thead><tr><th><input type="checkbox" id="ec-inv-check-all" aria-label="Select all visible accounts"></th><th><button type="button" data-account-sort="email">Email</button></th><th><button type="button" data-account-sort="retailer">Retailers</button></th><th><button type="button" data-account-sort="username">Username</button></th><th>Password</th></tr></thead><tbody id="ec-inv-account-list"></tbody></table></div>
           <form class="ec-source-pane" id="ec-inv-account-form" hidden><strong id="ec-inv-account-heading">Account details</strong><div class="ec-source-fields"><label>Email<input id="ec-inv-email" type="email" autocomplete="off"></label><label>Username<input id="ec-inv-username" type="text" autocomplete="off"></label><label>Password<input id="ec-inv-password" type="text" data-ec-private autocomplete="new-password" maxlength="4096"></label></div><div class="ec-record-tools"><button type="submit">Save account</button><button type="button" id="ec-inv-close-account">Close</button></div></form>
           <div id="ec-inv-transfer-panel" class="ec-import" hidden><strong id="ec-inv-transfer-heading"></strong><span class="ec-source-note">One login and password per line. Accounts without a saved password are skipped.</span><textarea id="ec-inv-credentials" aria-label="Exported credentials" rows="5" readonly spellcheck="false" autocomplete="off"></textarea><div class="ec-source-actions"><button type="button" id="ec-inv-export">Show export text</button><button type="button" id="ec-inv-copy-credentials" hidden>Copy credentials</button><button type="button" id="ec-inv-hide">Close &amp; clear</button></div></div>
           <div role="status" class="ec-source-status" id="ec-inv-account-msg"></div>

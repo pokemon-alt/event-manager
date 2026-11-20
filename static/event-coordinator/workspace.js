@@ -1931,6 +1931,7 @@
     sheetScroller.toggleAttribute('data-picking-cells',selectingCells);
     get('ec-select-cells').setAttribute('aria-pressed',String(selectingCells));
     get('ec-match-billing').hidden=!count||editing;
+    get('ec-format-address').hidden=editing||![...selectedCells.values()].some(fields=>[...fields].some(field=>profileFormatFields.has(field)));
     get('ec-edit-cells').hidden=!count||!bulkValue.hidden||(!selectingCells&&count<2);
     get('ec-apply-cells').hidden=!editing;get('ec-cancel-cells').hidden=!editing;
     get('ec-selection-info').textContent=count?count+(count===1?' cell':' cells')+' selected':selectingCells?'Tap cells to select them.':'';
@@ -2148,6 +2149,146 @@
     }
     defaultsDialog.close();
   });
+
+  const shippingStreetFields=['street','street2'];
+  const profileFormatGroups={
+    street:[...shippingStreetFields,'billingStreet','billingStreet2'],
+    name:['firstName','lastName','billingFirstName','billingLastName'],
+    phone:['phone','billingPhone']
+  };
+  const profileFormatFields=new Map(Object.entries(profileFormatGroups).flatMap(([group,fields])=>fields.map(field=>[field,group])));
+  const profileFormatOptions=['direction','suffix','unit','name','phone'];
+  const formatDialog=get('ec-format-dialog'),formatPreview=get('ec-format-preview');
+  let formatOwner=null,formatSelection=new Map();
+  function postalWords(words){
+    const spellings=new Map();
+    for(const [long,short] of Object.entries(words)){
+      const pair={long,short};
+      spellings.set(long.toLowerCase(),pair);
+      spellings.set(short.toLowerCase(),pair);
+    }
+    return spellings;
+  }
+  const postalDirections=postalWords({North:'N',South:'S',East:'E',West:'W',Northeast:'NE',Northwest:'NW',Southeast:'SE',Southwest:'SW'});
+  const postalSuffixes=postalWords({Street:'St',Avenue:'Ave',Boulevard:'Blvd',Circle:'Cir',Court:'Ct',Drive:'Dr',Highway:'Hwy',Lane:'Ln',Parkway:'Pkwy',Place:'Pl',Road:'Rd',Terrace:'Ter',Trail:'Trl',Way:'Way'});
+  const postalUnits=postalWords({Apartment:'Apt',Suite:'Ste'});
+  const postalLookup=(words,value)=>words.get(value.toLowerCase().replace(/\./g,''));
+  const postalSpelling=(words,value,mode)=>postalLookup(words,value)?.[mode]??value;
+  function formatPostalStreet(value,field,modes){
+    const text=value.trimEnd(),trailing=value.slice(text.length),unit=text.match(unitAtEnd);
+    const unitText=unit?text.slice(unit.index):'';
+    const formattedUnit=unitText.replace(/\b(?:apartment|apt|suite|ste)\.?(?=\s|#)/i,
+      word=>postalSpelling(postalUnits,word,modes.unit));
+    if(field==='street2'||field==='billingStreet2'){
+      const leading=unit?text.slice(0,unit.index):'';
+      return unit&&!leading.trim()?leading+formattedUnit+trailing:value;
+    }
+    const street=unit?text.slice(0,unit.index):text;
+    const parts=street.match(/^(\s*\d+[a-z]?(?:-\d+[a-z]?)?(?:\s+\d+\/\d+)?\s+)(.+?)(\s*,?\s*)$/i);
+    if(!parts)return value;
+    const words=parts[2].split(/(\s+)/),end=words.length-1;
+    let suffix=end;
+    if(end>=4&&postalLookup(postalDirections,words[end])&&postalLookup(postalSuffixes,words[end-2])){
+      suffix=end-2;
+      words[end]=postalSpelling(postalDirections,words[end],modes.direction);
+    }
+    if(suffix>=2&&postalLookup(postalSuffixes,words[suffix])){
+      words[suffix]=postalSpelling(postalSuffixes,words[suffix],modes.suffix);
+      if(suffix>=4&&!postalLookup(postalDirections,words[2]))words[0]=postalSpelling(postalDirections,words[0],modes.direction);
+    }
+    return parts[1]+words.join('')+parts[3]+formattedUnit+trailing;
+  }
+  function formatProfileCell(row,field,modes){
+    const before=row[field]||'',group=profileFormatFields.get(field);
+    if(group==='name'&&modes.name){
+      const clean=before.trim().replace(/\s+/g,' ');
+      return modes.name==='upper'?clean.toUpperCase():clean;
+    }
+    const country=field.startsWith('billing')?row.billingCountry:row.country;
+    if(!isUSAddress(country))return before;
+    if(group==='street')return formatPostalStreet(before,field,modes);
+    if(group==='phone'&&modes.phone){
+      const match=before.match(/^\s*(?:\+1[ .-]*)?(?:\((\d{3})\)|(\d{3}))[ .-]*(\d{3})[ .-]*(\d{4})\s*$/);
+      if(match){
+        const area=match[1]||match[2];
+        return modes.phone==='digits'?area+match[3]+match[4]:'('+area+') '+match[3]+'-'+match[4];
+      }
+    }
+    return before;
+  }
+  function profileFormatPlan(){
+    const modes=Object.fromEntries(profileFormatOptions.map(option=>[option,get('ec-format-'+option).value]));
+    const changes=new Map(),kept=new Set(),reserve=new Map();
+    if(currentList()!==formatOwner)return changes;
+    const shippingSelected=[...formatSelection.values()].some(fields=>shippingStreetFields.some(field=>fields.has(field)));
+    for(const row of sheetRows){
+      const key=sheetRowKey(row),edit={};
+      for(const field of formatSelection.get(key)||[]){
+        if(!profileFormatFields.has(field))continue;
+        const after=formatProfileCell(row,field,modes);
+        if((row[field]||'')!==after)edit[field]=after;
+      }
+      if(Object.keys(edit).length)changes.set(key,{row,edit});
+      if(!shippingSelected)continue;
+      const original=streetLines(row.shippingSource);
+      if(!shippingStreetFields.every(field=>(row[field]||'')===original[field]))continue;
+      if(!shippingStreetFields.some(field=>Object.hasOwn(edit,field)))kept.add(row.addressId);
+      else if(!reserve.has(row.addressId))reserve.set(row.addressId,key);
+    }
+    for(const [destination,key] of reserve){
+      if(kept.has(destination))continue;
+      const {edit}=changes.get(key);
+      for(const field of shippingStreetFields)delete edit[field];
+      if(!Object.keys(edit).length)changes.delete(key);
+    }
+    return changes;
+  }
+  function showProfileFormatPreview(){
+    const changes=profileFormatPlan();
+    const sample=document.createDocumentFragment();
+    let shown=0,fieldCount=0;
+    for(const {row,edit} of changes.values()){
+      for(const [field,after] of Object.entries(edit)){
+        fieldCount++;
+        if(shown>=12)continue;
+        const line=document.createElement('li');
+        const caption=fieldLabels.get(field);
+        line.textContent=row.nickname+' · '+caption+' · '+row[field]+' → '+after;
+        sample.append(line);
+        shown++;
+      }
+    }
+    formatPreview.replaceChildren(sample);
+    formatPreview.hidden=!shown;
+    const summary=changes.size?changes.size+(changes.size===1?' profile will change.':' profiles will change.'):'No changes for the selected cells.';
+    get('ec-format-status').textContent=summary+(fieldCount>shown?' Showing '+shown+' of '+fieldCount+' changed cells.':'');
+    get('ec-format-apply').disabled=!changes.size;
+  }
+  get('ec-format-address').addEventListener('click',()=>{
+    formatOwner=currentList();if(!formatOwner)return;
+    formatSelection=new Map([...selectedCells].map(([key,fields])=>[key,new Set(fields)]));
+    const groups=new Set([...formatSelection.values()].flatMap(fields=>[...fields].map(field=>profileFormatFields.get(field))));
+    for(const group of Object.keys(profileFormatGroups))get('ec-format-'+group+'-options').hidden=!groups.has(group);
+    showProfileFormatPreview();
+    formatDialog.showModal();
+  });
+  for(const option of profileFormatOptions)get('ec-format-'+option).addEventListener('change',showProfileFormatPreview);
+  get('ec-format-cancel').addEventListener('click',()=>formatDialog.close());
+  formatDialog.addEventListener('close',()=>{formatOwner=null;formatSelection.clear();formatPreview.replaceChildren();});
+  get('ec-format-apply').addEventListener('click',()=>{
+    const list=formatOwner,changes=profileFormatPlan();
+    if(!changes.size){showProfileFormatPreview();return;}
+    trackSheetEdit(list,[...changes.values()].map(({row})=>row.draftKey??row.accountId),()=>{
+      for(const {row,edit} of changes.values())applySheetEdits(list,row,edit);
+    });
+    const selection=new Map(formatSelection),wasSelecting=selectingCells;
+    formatDialog.close();
+    redrawSheetEdits(list);
+    for(const key of selection.keys())if(!sheetRowsByKey.has(key))selection.delete(key);
+    selectingCells=wasSelecting;
+    setSheetSelection(selection,[...selection.values()].reduce((count,fields)=>count+fields.size,0));
+  });
+
   function syncRowInputs(tr,row,typing){
     let grew=false;
     for(const input of tr.querySelectorAll('input[data-field]')){
@@ -3045,6 +3186,8 @@
     event.preventDefault();event.stopImmediatePropagation();inv('card-number').reportValidity();
   },true);
   const selectedRetailer=()=>inv('retailer').value;
+  const retailerShowsUsername=retailer=>!['walmart','target'].includes(normalized(retailer));
+  let accountUsernamesVisible=true;
   const selectedAccounts=()=>masterAccounts.filter(account=>account.retailer===selectedRetailer());
   const groupTitle=id=>accountGroups.find(group=>group.id===id)?.name||'';
   const retailerTitle=retailer=>retailer||'Unassigned';
@@ -3078,7 +3221,9 @@
     const account=masterAccounts.find(item=>item.id===Number(id));
     editedAccount=account?.id||0;++credentialView;inv('account-form').hidden=false;
     inv('account-heading').textContent=account?'Edit '+retailerTitle(account.retailer)+' account':'New '+selectedRetailer()+' account';
-    inv('email').value=account?.email||'';inv('username').value=account?.username||'';inv('password').type=ecPrivacyEnabled()?'password':'text';
+    inv('email').value=account?.email||'';inv('username').value=account?.username||'';
+    inv('username').closest('label').hidden=!retailerShowsUsername(account?.retailer??selectedRetailer());
+    inv('password').type=ecPrivacyEnabled()?'password':'text';
     inv('password').value='';delete inv('password').dataset.edited;
     inv('password').placeholder=account?.password||account?.hasPassword?'Saved password':'No password set';
     fillDirectoryEditor('accounts');accountEditorChanged();root.dispatchEvent(new Event('ec:account-editor'));
@@ -3144,28 +3289,42 @@
       if(event.key==='F2'&&button){event.preventDefault();start(button);}
     });
   }
+  function accountGroupMembers(accounts){
+    const groups=new Map(accountGroups.map(group=>[group.id,{retailer:group.retailer,exclusive:[],shared:[]}]));
+    for(const account of accounts){
+      if(!account.groupIds?.length)continue;
+      const ids=[...new Set(account.groupIds)].filter(id=>groups.has(id)&&groups.get(id).retailer===account.retailer);
+      for(const id of ids)groups.get(id)[ids.length>1?'shared':'exclusive'].push(account);
+    }
+    return groups;
+  }
+  function groupRemovalCounts(members){
+    const logins=count=>count+(count===1?' login':' logins');
+    return 'Delete '+logins(members.exclusive.length)+' exclusive to this group. Keep '+logins(members.shared.length)+' in other groups.';
+  }
   function drawAccountTree(){
-    const counts=new Map(),groupCounts=new Map();
-    const accounts=masterAccounts.filter(managedRetailAccount);
-    for(const account of accounts){counts.set(account.retailer,(counts.get(account.retailer)||0)+1);
-      for(const id of account.groupIds||[])groupCounts.set(id,(groupCounts.get(id)||0)+1);}
+    const counts=new Map(),accounts=masterAccounts.filter(managedRetailAccount),members=accountGroupMembers(accounts);
+    for(const account of accounts)counts.set(account.retailer,(counts.get(account.retailer)||0)+1);
+    const palette=['card-0','card-1','card-2','ec-veronica','ec-account-pool','ec-home'];
     const treeButton=(attr,label,count)=>'<button type="button" '+attr+'>'+esc(label)+' <small>'+count+'</small></button>';
     let html=treeButton('data-all-accounts','All accounts',accounts.length);
     for(const retailer of [...retailerNames(),...(counts.has('')?['']:[])]){
       html+=treeButton('data-retail-node="'+esc(retailer)+'"',retailerTitle(retailer),counts.get(retailer)||0);
       for(const group of accountGroups.filter(g=>g.retailer===retailer).sort((a,b)=>nameCollator.compare(a.name,b.name))){
-        html+=treeButton('class="ec-account-group-child" title="Double-click or press F2 to rename" data-account-group-node="'+esc(group.id)+'"',group.name,groupCounts.get(group.id)||0);
+        const membership=members.get(group.id),note=groupRemovalCounts(membership);
+        const count=membership.exclusive.length+membership.shared.length;
+        const tint=Array.from(group.id).reduce((hash,letter)=>(hash*31+letter.charCodeAt(0))>>>0,0)%palette.length;
+        html+='<div class="ec-chip ec-account-group-chip '+palette[tint]+'"><button type="button" class="ec-tree-link" data-account-group-node="'+esc(group.id)+'" title="Double-click or press F2 to rename"><span>'+esc(group.name)+'</span><small>'+count+'</small></button>'+
+          deleteControl('stored-account-group',group.id,group.name+'. '+note)+'</div><p class="ec-account-group-warning" role="status">'+esc(note)+'</p>';
       }
     }
     const tree=inv('account-tree');setTreeMarkup(tree,html);
-    for(const button of tree.querySelectorAll('button')){
+    for(const button of tree.querySelectorAll('[data-all-accounts],[data-retail-node],[data-account-group-node]')){
       const active=button.hasAttribute('data-all-accounts')?accountScope.retailer===null:
         button.hasAttribute('data-retail-node')?accountScope.retailer===button.dataset.retailNode&&!accountScope.group:accountScope.group===button.dataset.accountGroupNode;
       button.setAttribute('aria-current',String(active));
     }
     inv('group-context').textContent='New group in '+selectedRetailer();
-    inv('edit-group').hidden=!accountScope.group;inv('group-edit-name').value=groupTitle(accountScope.group);
-    closeDirectoryRemoval(inv('group-confirm'));
   }
   function accountEmailCell(email,content,retailers,expanded=false){
     const url=parcelMailSearchUrl(email,retailers[0]);
@@ -3178,12 +3337,13 @@
     return '<td><div class="ec-account-email-cell">'+content+icon+'</div></td>';
   }
   function accountLoginRow(account,detail=false){
-    const email=esc(account.email||'(username only)'),retailer=esc(retailerTitle(account.retailer));
+    const email=esc(account.email||(retailerShowsUsername(account.retailer)?'(username only)':account.username)||'—'),retailer=esc(retailerTitle(account.retailer));
     const editButton='<button type="button" title="Open account details · double-click or press F2 to edit login · drag to a group" data-edit-account="'+account.id+'">'+(detail?retailer:email)+'</button>';
     const selectLabel=esc((detail?retailerTitle(account.retailer)+' ':'')+(account.email||account.username));
     return '<tr draggable="true" data-account-record="'+account.id+'"'+(detail?' class="ec-account-detail"':'')+'><td><input type="checkbox" data-check-account="'+account.id+'" aria-label="Select '+selectLabel+'"></td>'+
-      accountEmailCell(account.email,detail?'':editButton,[account.retailer])+'<td>'+(detail?editButton:retailer)+'</td><td>'+esc(account.username||'—')+'</td>'+
-      secretCell(account.id,'password',account.hasPassword||account.password?'••••••':'—')+'<td>'+esc((account.groupIds||[]).map(groupTitle).filter(Boolean).join(', ')||'—')+'</td></tr>';
+      accountEmailCell(account.email,detail?'':editButton,[account.retailer])+'<td>'+(detail?editButton:retailer)+'</td>'+
+      (accountUsernamesVisible?'<td>'+esc(retailerShowsUsername(account.retailer)?account.username||'—':'—')+'</td>':'')+
+      secretCell(account.id,'password',account.hasPassword||account.password?'••••••':'—')+'</tr>';
   }
   function groupDirectoryLogins(visible){
     emailAccountGroups.clear();
@@ -3207,11 +3367,10 @@
     if(account)return accountLoginRow(account,detail);
     const email=esc(accounts[0].email),attr=esc(key),expanded=expandedAccountEmails.has(key);
     const retailers=[...new Set(accounts.map(account=>account.retailer||''))];
-    const groups=[...new Set(accounts.flatMap(account=>(account.groupIds||[]).map(groupTitle)).filter(Boolean))].sort(nameCollator.compare).join(', ');
     const toggle='<button type="button" data-toggle-email="'+attr+'" aria-label="'+email+'" aria-expanded="'+expanded+'" title="Show or hide retailer logins">'+email+'</button>';
     return '<tr data-email-summary="'+attr+'"><td><input type="checkbox" data-check-email="'+attr+'" aria-label="Select all '+accounts.length+' logins for '+email+'"></td>'+
       accountEmailCell(accounts[0].email,toggle,retailers,expanded)+'<td>'+esc(retailers.map(retailerTitle).join(', '))+'</td>'+
-      '<td colspan="2" class="ec-account-login-count">'+accounts.length+' logins</td><td>'+esc(groups||'—')+'</td></tr>';
+      '<td colspan="'+(accountUsernamesVisible?2:1)+'" class="ec-account-login-count">'+accounts.length+' logins</td></tr>';
   }
   function directoryWindow(body,kind,getItems,renderRow,paintSelection){
     const viewport=body.closest('.ec-record-scroll'),table=body.closest('table');
@@ -3243,7 +3402,7 @@
       missing.forEach((i,n)=>{
         const row=batch.rows[n];row.dataset.directoryIndex=i;row.setAttribute('aria-rowindex',String(i+2));mounted.set(i,row);
       });
-      const targets=[],columns=table.tHead.rows[0].cells.length;
+      const targets=[],columns=Array.from(table.tHead.rows[0].cells).filter(cell=>!cell.hidden).length;
       let previous=-1;
       for(const i of indices){
         if(i>previous+1)targets.push(tableSpacer(i-previous-1,height,columns));
@@ -3269,7 +3428,11 @@
   const {viewport:loginViewport,render:renderAccountWindow}=directoryWindow(inv('account-list'),'accounts',()=>directoryItems,directoryRow,paintAccountSelection);
   function drawAccounts(preferred){
     retailOptions();drawAccountTree();resetTransfer();
-    const visible=visibleAccounts(),ids=new Set(visible.map(a=>a.id));
+    let visible=visibleAccounts();
+    accountUsernamesVisible=accountScope.retailer===null?visible.some(account=>retailerShowsUsername(account.retailer)):retailerShowsUsername(accountScope.retailer);
+    root.querySelector('[data-account-sort="username"]').closest('th').hidden=!accountUsernamesVisible;
+    if(!accountUsernamesVisible&&accountSort==='username'){accountSort='email';accountDirection=1;visible=visibleAccounts();}
+    const ids=new Set(visible.map(a=>a.id));
     for(const id of checkedAccounts)if(!ids.has(id))checkedAccounts.delete(id);
     directoryAccountsById.clear();for(const account of visible)directoryAccountsById.set(account.id,account);
     directoryLogins=visible;directoryItems=groupDirectoryLogins(visible);renderAccountWindow(true);
@@ -3338,7 +3501,7 @@
   function editRetailLogin(event){
     const button=event.target.closest('[data-edit-account]');if(!button)return;
     selectAccount(button.dataset.editAccount);
-    const field=inv(inv('email').value?'email':'username');
+    const field=inv(inv('email').value||inv('username').closest('label').hidden?'email':'username');
     field.focus();field.select();
   }
   inv('account-list').addEventListener('dblclick',editRetailLogin);
@@ -3389,19 +3552,19 @@
     group.name=name;drawAccounts();renderConfig(false);saveCoordinatorChange({immediate:true});return '';
   }
   enableGroupRename(inv('account-tree'),'[data-account-group-node]',button=>accountGroups.find(g=>g.id===button.dataset.accountGroupNode),100,renameAccountGroup);
-  inv('rename-group').addEventListener('submit',event=>{
-    event.preventDefault();const group=accountGroups.find(g=>g.id===accountScope.group),name=inv('group-edit-name').value.trim();
-    if(group&&name)inv('account-msg').textContent=renameAccountGroup(group,name);
-  });
-  inv('delete-group').addEventListener('click',()=>openDirectoryRemoval(inv('delete-group'),inv('group-confirm'),inv('keep-group')));
-  inv('keep-group').addEventListener('click',()=>closeDirectoryRemoval(inv('group-confirm')));
-  inv('confirm-group').addEventListener('click',()=>{
-    const id=accountScope.group,index=accountGroups.findIndex(group=>group.id===id);
-    if(!confirmDirectoryRemoval(inv('group-confirm'))||index<0)return;
+  inv('account-tree').addEventListener('ec:confirmed-remove',event=>{
+    const {kind,id}=event.detail;
+    if(kind!=='stored-account-group')return;
+    const index=accountGroups.findIndex(group=>group.id===id);
+    if(index<0)return;
+    const group=accountGroups[index],members=accountGroupMembers(masterAccounts.filter(managedRetailAccount)).get(id);
+    removeRetailAccounts(members.exclusive);
+    for(const account of members.shared)account.groupIds=account.groupIds.filter(key=>key!==id);
     accountGroups.splice(index,1);
-    for(const account of masterAccounts)if(account.groupIds?.includes(id))account.groupIds=account.groupIds.filter(key=>key!==id);
-    for(const event of events)for(const list of event.lists)if(list.accountGroupIds?.includes(id))list.accountGroupIds=list.accountGroupIds.filter(key=>key!==id);
-    chooseAccountScope(accountScope.retailer);inventoryAccountsChanged();inv('account-msg').textContent='Group removed. Its accounts remain in the retailer directory.';
+    for(const item of events)for(const list of item.lists)if(list.accountGroupIds?.includes(id))list.accountGroupIds=list.accountGroupIds.filter(key=>key!==id);
+    if(accountScope.group===id)chooseAccountScope(group.retailer);else drawAccounts();
+    inventoryAccountsChanged();
+    inv('account-msg').textContent='Removed '+group.name+'. Deleted '+members.exclusive.length+' exclusive and kept '+members.shared.length+' shared logins.';
   });
   function changeAccountMembership(group,ids,add){
     const accounts=masterAccounts.filter(account=>ids.has(account.id));
@@ -3432,6 +3595,13 @@
     for(const account of selected)if(account.retailer!==retailer){account.retailer=retailer;account.groupIds=[];}
     chooseAccountScope(retailer);inventoryAccountsChanged();inv('account-msg').textContent='Assigned '+selected.length+' accounts to '+retailer+'.';
   });
+  function removeRetailAccounts(records){
+    if(!records.length)return;
+    const ids=new Set(records.map(account=>account.id));
+    for(const account of records)if(account.parcelKey)removedAccountKeys.add(account.parcelKey);
+    forgetAccountSecrets(records);
+    for(let i=masterAccounts.length-1;i>=0;i--)if(ids.has(masterAccounts[i].id))masterAccounts.splice(i,1);
+  }
   inv('delete-accounts').addEventListener('click',()=>{
     if(!checkedAccounts.size)return;
     inv('delete-note').textContent='Delete '+checkedAccounts.size+' selected accounts and their credentials from Event Coordinator?';
@@ -3440,15 +3610,13 @@
   inv('delete-cancel').addEventListener('click',()=>closeDirectoryRemoval(inv('delete-confirm')));
   inv('delete-apply').addEventListener('click',()=>{
     if(!confirmDirectoryRemoval(inv('delete-confirm'))||!checkedAccounts.size)return;
-    const removed=chosenAccounts();for(const account of removed)if(account.parcelKey)removedAccountKeys.add(account.parcelKey);
-    forgetAccountSecrets(removed);
-    for(let i=masterAccounts.length-1;i>=0;i--)if(checkedAccounts.has(masterAccounts[i].id))masterAccounts.splice(i,1);
+    const removed=chosenAccounts();removeRetailAccounts(removed);
     checkedAccounts.clear();closeAccountEditor();drawAccounts();inventoryAccountsChanged();inv('account-msg').textContent='Deleted '+removed.length+' accounts.';
   });
   inv('account-form').addEventListener('submit',event=>{
     event.preventDefault();const email=inv('email').value.trim(),username=inv('username').value.trim(),password=inv('password').value;
     let account=masterAccounts.find(item=>item.id===editedAccount);const retailer=account?account.retailer:selectedRetailer();
-    if(!email&&!username){inv('account-msg').textContent='Enter an email or username.';return;}
+    if(!email&&!username){inv('account-msg').textContent=retailerShowsUsername(retailer)?'Enter an email or username.':'Enter an email.';return;}
     const logins=new Set([email,username].filter(Boolean).map(normalized));
     const matching=masterAccounts.filter(a=>a.id!==editedAccount&&a.retailer===retailer&&[a.email,a.username].some(value=>value&&logins.has(normalized(value))));
     if(matching.some(managedRetailAccount)){
@@ -4306,7 +4474,7 @@ function canApplyRemoteView(){
   if(sourceTab==='cards')return (inv('card-form').hidden||(!cardEditorHasDraft()&&!detailsToggle.disabled))
       &&!get('ec-card-directory-group-name').value;
   if(sourceTab==='accounts')return (inv('account-form').hidden||!accountDraft)&&inv('transfer-panel').hidden
-      &&!inv('account-group-name').value&&(inv('edit-group').hidden||inv('group-edit-name').value===groupTitle(accountScope.group));
+      &&!inv('account-group-name').value;
   const editor=get('ec-source-editor'),form=editor.querySelector('form');
   for(const input of editor.querySelectorAll('[data-suite-recipient-input],[name=newRecipient]'))if(input.value)return false;
   if(form?.dataset.sourceAddress)return form.querySelector('[type=submit]').disabled;
